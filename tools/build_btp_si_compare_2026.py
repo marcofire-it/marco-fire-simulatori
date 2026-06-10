@@ -264,13 +264,23 @@ def build_params(wb):
     output_cell(ws, 56, 2, "=(B50+B52)/2", fmt="0.00%")
     note_cell(ws, 57, 1, "Usato come riferimento nelle matrici e break-even. Se vuoi cambiare la pesatura, modifica la formula.", span=4)
 
+    # ==== YTM reale NETTO (i numeri citati nel video) ====
+    # NB: NON spostare B5-B48/D46/D48 (usati da sync_btp_params.py EXCEL_CELL_MAP).
+    section_header(ws, 58, "YTM reale NETTO (citati nel video)", span=4)
+    label_cell(ws, 59, 1, "YTM reale NETTO mag 2028")
+    output_cell(ws, 59, 2, "=B50*(1-B8)", fmt="0.00%")
+    label_cell(ws, 60, 1, "YTM reale NETTO giu 2030")
+    output_cell(ws, 60, 2, "=B52*(1-B8)", fmt="0.00%")
+    label_cell(ws, 61, 1, "YTM reale NETTO medio (2 ISIN)")
+    output_cell(ws, 61, 2, "=B56*(1-B8)", fmt="0.00%")
+
     return ws
 
 
 def build_btp_si(wb):
     """Foglio 2 - BTP Italia Si simulazione 4 scenari."""
     ws = wb.create_sheet("2 - BTP Italia Si")
-    set_col_widths(ws, [42, 16, 16, 16, 16])
+    set_col_widths(ws, [42, 16, 16, 16, 16, 16])
 
     title_row(ws, 1, "BTP Italia Si - rendimento netto in 4 scenari inflazione FOI", span=5)
     disclaimer_row(ws, 2, span=5)
@@ -311,14 +321,19 @@ def build_btp_si(wb):
     table_header(ws, 19, 2, "Cedole nette tot 5y")
     table_header(ws, 19, 3, "Premio netto fedelta'")
     table_header(ws, 19, 4, "Tot. netto incassato")
-    table_header(ws, 19, 5, "IRR netto annuo")
+    table_header(ws, 19, 5, "IRR nom netto annuo (lineare)")
+    table_header(ws, 19, 6, "IRR reale netto")
     for r, lbl, _ in scen_rows:
         rr = r + 7  # 20, 21, 22, 23
         label_cell(ws, rr, 1, lbl)
         output_cell(ws, rr, 2, f"=E{r}*$B$6", fmt="#,##0")
         output_cell(ws, rr, 3, f"=$B$9*$B$7*(1-$B$8)", fmt="#,##0")
         output_cell(ws, rr, 4, f"=B{rr}+C{rr}", fmt="#,##0")
-        output_cell(ws, rr, 5, f"=((D{rr}+$B$9)/$B$9)^(1/$B$6)-1", fmt="0.00%")
+        # IRR nominale netto LINEARE (no compounding): (fisso + premio/durata + FOI scenario)*(1-tasse)
+        # FOI scenario in B{r} (righe 13-16 della tabella cedole). ROUND a 6 dp per tie deterministico col foglio 7.
+        output_cell(ws, rr, 5, f"=ROUND(($B$5+$B$7/$B$6+B{r})*(1-$B$8),6)", fmt="0.00%")
+        # IRR reale netto = nominale netto - FOI scenario
+        output_cell(ws, rr, 6, f"=E{rr}-B{r}", fmt="0.00%")
 
     section_header(ws, 25, "NOTA: BTP Italia Si NON rivaluta il capitale (resta a 100)", span=5)
     note_cell(ws, 26, 1, "Differenza chiave vs BTP Italia classico: qui l'inflazione "
@@ -458,7 +473,7 @@ def build_btp_valore(wb):
     for r, lbl, src in fasi:
         label_cell(ws, r, 1, lbl)
         output_cell(ws, r, 2, f"={src}", fmt="0.00%")
-        output_cell(ws, r, 3, f"={src}*(1-$B$10)", fmt="0.00%")
+        output_cell(ws, r, 3, f"={src}*(1-$B$10)", fmt="0.000%")
         output_cell(ws, r, 4, f"=$B$11*C{r}", fmt="#,##0")
         output_cell(ws, r, 5, f"=D{r}*2", fmt="#,##0")
 
@@ -469,8 +484,9 @@ def build_btp_valore(wb):
     output_cell(ws, 21, 2, "=B11*B8*(1-B10)", fmt="#,##0")
     label_cell(ws, 22, 1, "Tot. netto 6y")
     output_cell(ws, 22, 2, "=B20+B21", fmt="#,##0")
-    label_cell(ws, 23, 1, "IRR netto annuo")
-    output_cell(ws, 23, 2, "=((B22+B11)/B11)^(1/B9)-1", fmt="0.00%")
+    label_cell(ws, 23, 1, "IRR nom netto annuo (lineare)")
+    # Lineare: (media cedole lorde step-up + premio/durata)*(1-tasse) -> 2,80% con default
+    output_cell(ws, 23, 2, "=ROUND(((B5+B6+B7)/3+B8/B9)*(1-B10),6)", fmt="0.00%")
 
     section_header(ws, 25, "NOTA: il BTP Valore NON e' indicizzato all'inflazione", span=5)
     note_cell(ws, 26, 1, "Cedole step-up FISSE in nominale. In inflazione alta perde potere d'acquisto reale. "
@@ -491,7 +507,7 @@ def build_btp_valore(wb):
 def build_btp_futura(wb):
     """Foglio 5 - BTP Futura (ipotesi premio PIL)."""
     ws = wb.create_sheet("5 - BTP Futura")
-    set_col_widths(ws, [42, 16, 16, 16, 16])
+    set_col_widths(ws, [42, 16, 16, 16, 16, 16])
 
     title_row(ws, 1, "BTP Futura - sospeso, ricostruzione storica 4a emissione 12y", span=5)
     disclaimer_row(ws, 2, span=5)
@@ -520,6 +536,7 @@ def build_btp_futura(wb):
     table_header(ws, 15, 3, "Premio fed. atteso")
     table_header(ws, 15, 4, "Cedole nette 12y")
     table_header(ws, 15, 5, "Tot. netto 12y")
+    table_header(ws, 15, 6, "IRR nom netto annuo (lineare)")
     pil_scen = [
         (16, "Bassa (PIL 1,5%)",  0.015),
         (17, "Base (PIL 3,0%)",   0.030),
@@ -534,6 +551,8 @@ def build_btp_futura(wb):
         output_cell(ws, r, 4, f"=$B$12*(4*$B$5+4*$B$6+4*$B$7)*(1-$B$11)", fmt="#,##0")
         # Premio netto + cedole nette
         output_cell(ws, r, 5, f"=D{r}+$B$12*C{r}*(1-$B$11)", fmt="#,##0")
+        # IRR nominale netto LINEARE = tot netto / capitale / durata (12y)
+        output_cell(ws, r, 6, f"=E{r}/$B$12/$B$10", fmt="0.00%")
 
     section_header(ws, 20, "NOTA: BTP Futura NON e' piu' emesso dal 2021", span=5)
     note_cell(ws, 21, 1, "Sul secondario disponibili 4 ISIN ma cedole molto basse (0,35-1,0%). "
@@ -580,7 +599,7 @@ def build_btp_nominali(wb):
     table_header(ws, 5, 2, "Rendimento lordo")
     table_header(ws, 5, 3, "Cedola netta annua")
     table_header(ws, 5, 4, "Tot. cedole nette a scad.")
-    table_header(ws, 5, 5, "IRR netto annuo")
+    table_header(ws, 5, 5, "Cedola netta annua EUR")
     label_cell(ws, 6, 1, "Tassazione 12,5% applicata")
     label_cell(ws, 7, 1, "Capitale (default Parametri)")
     output_cell(ws, 6, 2, "='1 - Parametri'!B8", fmt="0.0%")
@@ -590,9 +609,10 @@ def build_btp_nominali(wb):
         r = 9 + i
         label_cell(ws, r, 1, lbl)
         output_cell(ws, r, 2, ref, fmt="0.00%")
-        output_cell(ws, r, 3, f"=B{r}*(1-$B$6)", fmt="0.00%")
+        output_cell(ws, r, 3, f"=B{r}*(1-$B$6)", fmt="0.000%")
         output_cell(ws, r, 4, f"=$B$7*C{r}*{n}", fmt="#,##0")
-        output_cell(ws, r, 5, f"=((B{r+2}+$B$7)/$B$7)^(1/{n})-1" if False else f"=C{r}", fmt="0.00%")
+        # Cedola netta annua in EUR sul capitale
+        output_cell(ws, r, 5, f"=$B$7*C{r}", fmt="#,##0")
 
     section_header(ws, 16, "NOTA: BTP nominali NON proteggono dall'inflazione", span=5)
     note_cell(ws, 17, 1, "Rendimento certo in nominale. Se inflazione > rendimento, perdi potere d'acquisto. "
@@ -653,7 +673,8 @@ def build_matrice(wb):
     label_cell(ws, 6, 1, "BTP Italia Si (1,2% + FOI)")
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
-        formula = f"=({si_real}+{premio_si_an}+{sc})*(1-{tasse})-{sc}"
+        # ROUND a 6 dp = tie deterministico con foglio 2 col F (S2 -> 0,91%)
+        formula = f"=ROUND(({si_real}+{premio_si_an}+{sc})*(1-{tasse})-{sc},6)"
         output_cell(ws, 6, col, formula, fmt="0.00%")
 
     # Riga 7: BTP Italia classico - usa YTM REALE effettivo (chi compra OGGI sul MOT).
@@ -665,26 +686,26 @@ def build_matrice(wb):
         formula = f"={classico_real}*(1-{tasse})-{tasse}*{sc}"
         output_cell(ws, 7, col, formula, fmt="0.00%")
 
-    # Riga 8: BTP Valore (step-up avg, rendimento REALE = (1+nom_netto)/(1+infl) - 1)
+    # Riga 8: BTP Valore (step-up avg LORDO + premio/durata) - reale LINEARE: x*(1-tasse) - infl
     label_cell(ws, 8, 1, "BTP Valore (avg 3,07% lordo)")
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
-        formula = f"=(1+({avg_valore}+{premio_val_an})*(1-{tasse}))/(1+{sc})-1"
+        formula = f"=({avg_valore}+{premio_val_an})*(1-{tasse})-{sc}"
         output_cell(ws, 8, col, formula, fmt="0.00%")
 
-    # Riga 9: BTP nominale 5y - rendimento REALE
+    # Riga 9: BTP nominale 5y - reale LINEARE: x*(1-tasse) - infl
     label_cell(ws, 9, 1, "BTP nominale 5y (2,90% lordo)")
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
-        formula = f"=(1+{nominale_5y}*(1-{tasse}))/(1+{sc})-1"
+        formula = f"={nominale_5y}*(1-{tasse})-{sc}"
         output_cell(ws, 9, col, formula, fmt="0.00%")
 
-    # Riga 10: BTP nominale 10y - rendimento REALE
+    # Riga 10: BTP nominale 10y - reale LINEARE: x*(1-tasse) - infl
     nominale_10y = "'1 - Parametri'!B34"
     label_cell(ws, 10, 1, "BTP nominale 10y (3,45% lordo)")
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
-        formula = f"=(1+{nominale_10y}*(1-{tasse}))/(1+{sc})-1"
+        formula = f"={nominale_10y}*(1-{tasse})-{sc}"
         output_cell(ws, 10, col, formula, fmt="0.00%")
 
     section_header(ws, 12, "Heatmap: VERDE = miglior rendimento REALE per scenario / ROSSO = peggior", span=5)
@@ -769,28 +790,38 @@ def build_break_even(wb):
         output_cell(ws, r, 3, f"=B{r}*(1-{tasse})", fmt="0.00%")
         # Col D: soglia LORDA (vedi commento sopra) - usata da verdetto IF e bar chart
         output_cell(ws, r, 4, f"=B{r}-{si_lordo_an}", fmt="0.00%")
-        # Verdetto: ROUND*100&"%" per locale-safe
-        output_cell(ws, r, 5, f'=IF(D{r}<=0,"Si vince SEMPRE",IF(D{r}>=0.045,"Si perde quasi sempre","Si vince se FOI > "&ROUND(D{r}*100,1)&"%"))', fmt="@")
+        # Verdetto: ROUND*100&"%" per locale-safe (2 decimali per soglie precise)
+        output_cell(ws, r, 5, f'=IF(D{r}<=0,"Si vince SEMPRE",IF(D{r}>=0.045,"Si perde quasi sempre","Si vince se FOI > "&ROUND(D{r}*100,2)&"%"))', fmt="@")
 
     # BTP Italia classico: confronto diverso (rivaluta capitale, no break-even semplice)
+    # Confronto a parita' di inflazione su base REALE NETTA: entrambi indicizzati FOI,
+    # il drag fiscale -t*FOI si elide => basta confrontare le componenti reali nette.
     section_header(ws, 14, "BTP Italia classico: confronto diverso (capitale rivalutato, no break-even classico)", span=5)
     table_header(ws, 15, 1, "Avversario")
-    table_header(ws, 15, 2, "Cedola reale")
-    table_header(ws, 15, 3, "Cedola reale Sì")
-    table_header(ws, 15, 4, "Gap reale (vs Sì)")
+    table_header(ws, 15, 2, "YTM reale NETTO (MOT)")
+    table_header(ws, 15, 3, "Sì reale netto")
+    table_header(ws, 15, 4, "Vantaggio Sì (pp)")
     table_header(ws, 15, 5, "Verdetto")
 
+    si_reale_netto = "=('1 - Parametri'!B5+'1 - Parametri'!B7/5)*(1-'1 - Parametri'!B8)"
+
     label_cell(ws, 16, 1, "BTP Italia classico mag 2028 (YTM REALE da prezzo MOT)")
-    output_cell(ws, 16, 2, "='1 - Parametri'!B50", fmt="0.00%")
-    output_cell(ws, 16, 3, "='1 - Parametri'!B5", fmt="0.00%")
-    output_cell(ws, 16, 4, "=B16-C16", fmt="0.00%")
-    output_cell(ws, 16, 5, '=IF(D16<=0,"Sì vince a parità infl.","Sì NON raggiunge (gap reale "&ROUND(D16*100,1)&"pp)")', fmt="@")
+    output_cell(ws, 16, 2, "='1 - Parametri'!B50*(1-'1 - Parametri'!B8)", fmt="0.00%")
+    output_cell(ws, 16, 3, si_reale_netto, fmt="0.00%")
+    output_cell(ws, 16, 4, "=C16-B16", fmt="0.00%")
+    output_cell(ws, 16, 5, '=IF(D16>=0,"Sì vince (vantaggio "&ROUND(D16*100,2)&"pp)","Classico vince (gap "&ROUND(-D16*100,2)&"pp)")', fmt="@")
 
     label_cell(ws, 17, 1, "BTP Italia classico giu 2030 (YTM REALE da prezzo MOT)")
-    output_cell(ws, 17, 2, "='1 - Parametri'!B52", fmt="0.00%")
-    output_cell(ws, 17, 3, "='1 - Parametri'!B5", fmt="0.00%")
-    output_cell(ws, 17, 4, "=B17-C17", fmt="0.00%")
-    output_cell(ws, 17, 5, '=IF(D17<=0,"Sì vince a parità infl.","Sì NON raggiunge (gap reale "&ROUND(D17*100,1)&"pp)")', fmt="@")
+    output_cell(ws, 17, 2, "='1 - Parametri'!B52*(1-'1 - Parametri'!B8)", fmt="0.00%")
+    output_cell(ws, 17, 3, si_reale_netto, fmt="0.00%")
+    output_cell(ws, 17, 4, "=C17-B17", fmt="0.00%")
+    output_cell(ws, 17, 5, '=IF(D17>=0,"Sì vince (vantaggio "&ROUND(D17*100,2)&"pp)","Classico vince (gap "&ROUND(-D17*100,2)&"pp)")', fmt="@")
+
+    label_cell(ws, 18, 1, "BTP Italia classico MEDIA 2 ISIN (YTM reale NETTO medio)")
+    output_cell(ws, 18, 2, "='1 - Parametri'!B56*(1-'1 - Parametri'!B8)", fmt="0.00%")
+    output_cell(ws, 18, 3, si_reale_netto, fmt="0.00%")
+    output_cell(ws, 18, 4, "=C18-B18", fmt="0.00%")
+    output_cell(ws, 18, 5, '=IF(D18>=0,"Sì vince (vantaggio "&ROUND(D18*100,2)&"pp)","Classico vince (gap "&ROUND(-D18*100,2)&"pp)")', fmt="@")
 
     note_cell(ws, 19, 1, "ATTENZIONE: usato YTM REALE EFFETTIVO calcolato dal prezzo MOT (non cedola del prospetto). "
                           "Se sul secondario il classico quota SOPRA par (es. 104), il YTM reale si abbassa molto, "
@@ -818,13 +849,13 @@ def build_break_even(wb):
         end_type='max', end_color='F87171',       # rosso: soglia alta = Sì fatica
     )
     ws.conditional_formatting.add('D6:D12', color_rule_be)
-    # Heatmap gap reale classico (gap basso = Sì vicino al classico = buono per Sì)
+    # Heatmap vantaggio Sì (alto = meglio per Sì = verde)
     color_rule_gap = ColorScaleRule(
-        start_type='min', start_color='86EFAC',
+        start_type='min', start_color='F87171',
         mid_type='percentile', mid_value=50, mid_color='FEF3C7',
-        end_type='max', end_color='F87171',
+        end_type='max', end_color='86EFAC',
     )
-    ws.conditional_formatting.add('D16:D17', color_rule_gap)
+    ws.conditional_formatting.add('D16:D18', color_rule_gap)
     return ws
 
 
@@ -927,12 +958,15 @@ def build_calcolatore(wb):
     tasse = "'1 - Parametri'!B8"
     infl_user = "B7"
 
+    # Convenzioni COERENTI col foglio 7 (tutto LINEARE):
+    # - Indicizzati FOI (Sì, classico): reale netto = reale_netto_base - tasse*infl (drag fiscale su comp. inflazione)
+    # - Nominali (Valore, 5y, 10y): reale netto = nominale_netto - infl (NO drag: cedola non indicizzata)
     strumenti = [
-        (12, "BTP Italia Si",    "=('1 - Parametri'!B5+'1 - Parametri'!B7/5)*(1-{tasse})", 5),
-        (13, "BTP Italia clas.", "='1 - Parametri'!B12*(1-{tasse})", 5),
-        (14, "BTP Valore",       "=(1+((2*'1 - Parametri'!B15+2*'1 - Parametri'!B16+2*'1 - Parametri'!B17)/6+'1 - Parametri'!B18/6)*(1-{tasse}))/(1+{infl_user})-1", 6),
-        (15, "BTP nominale 5y",  "=(1+'1 - Parametri'!B32*(1-{tasse}))/(1+{infl_user})-1", 5),
-        (16, "BTP nominale 10y", "=(1+'1 - Parametri'!B34*(1-{tasse}))/(1+{infl_user})-1", 10),
+        (12, "BTP Italia Si",    "=('1 - Parametri'!B5+'1 - Parametri'!B7/5)*(1-{tasse})-{tasse}*{infl_user}", 5),
+        (13, "BTP Italia clas. (YTM MOT)", "='1 - Parametri'!B56*(1-{tasse})-{tasse}*{infl_user}", 5),
+        (14, "BTP Valore",       "=((2*'1 - Parametri'!B15+2*'1 - Parametri'!B16+2*'1 - Parametri'!B17)/6+'1 - Parametri'!B18/6)*(1-{tasse})-{infl_user}", 6),
+        (15, "BTP nominale 5y",  "='1 - Parametri'!B32*(1-{tasse})-{infl_user}", 5),
+        (16, "BTP nominale 10y", "='1 - Parametri'!B34*(1-{tasse})-{infl_user}", 10),
     ]
     for r, lbl, formula, dur in strumenti:
         label_cell(ws, r, 1, lbl)
