@@ -13,7 +13,9 @@ Fogli:
  9 - 4 profili FIRE (allocazione)
 10 - Calcolatore personale
 
-Output: simulatori/btp_si_compare_2026.xlsx
+Output (default): e:/sviluppo/marco-fire-simulatori-staging/simulatori/btp_si_compare_2026.xlsx
+(repo STAGING private; promozione a public solo via tools/release_excel.py al go-live).
+Override: python tools/build_btp_si_compare_2026.py --out <path>
 """
 from __future__ import annotations
 import sys
@@ -244,7 +246,7 @@ def build_params(wb):
     label_cell(ws, 48, 1, "Prezzo secondario BTP Italia giu 2030")
     input_cell(ws, 48, 2, 102.0, fmt="0.00")
     label_cell(ws, 48, 3, "Anni residui")
-    input_cell(ws, 48, 4, 5, fmt="0.0")
+    input_cell(ws, 48, 4, 4, fmt="0.0")  # giu 2030 - giu 2026 = 4 anni residui
     note_cell(ws, 49, 1, "Default 102 = premio 2%. Aggiorna col valore reale al 12/06/2026.", span=4)
 
     # YTM reale effettivo (bond equivalent yield approssimato)
@@ -255,7 +257,7 @@ def build_params(wb):
 
     label_cell(ws, 52, 1, "YTM reale giu 2030 (per chi compra al MOT oggi)")
     output_cell(ws, 52, 2, "=(B12*100+(100-B48)/D48)/((100+B48)/2)", fmt="0.00%")
-    note_cell(ws, 53, 1, "Default classico 1,6% sul prospetto, a prezzo 102 con 5y residui → YTM ~1,2% reale.", span=4)
+    note_cell(ws, 53, 1, "Default classico 1,6% sul prospetto, a prezzo 102 con 4y residui → YTM ~1,1% reale.", span=4)
 
     section_header(ws, 55, "YTM reale medio classico per il confronto matrice (media ponderata 2 ISIN)", span=4)
     label_cell(ws, 56, 1, "YTM reale effettivo (media mag 2028 + giu 2030)")
@@ -644,19 +646,23 @@ def build_matrice(wb):
                ("'1 - Parametri'!B39", "B39"),
                ("'1 - Parametri'!B40", "B40")]
 
-    # Riga 6: BTP Italia Si (rendimento REALE = tasso fisso netto + premio netto annualizzato)
+    # Riga 6: BTP Italia Si - IRR REALE netto DIPENDE dallo scenario FOI:
+    # cedola lorda = fisso + premio/durata + FOI; netta = *(1-tasse); reale = - FOI
+    # => (fisso + premio/5 + FOI)*(1-t) - FOI  ==  (fisso + premio/5)*(1-t) - t*FOI
+    # (drag fiscale: le tasse colpiscono anche la componente inflazione della cedola)
     label_cell(ws, 6, 1, "BTP Italia Si (1,2% + FOI)")
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
-        formula = f"={si_real}*(1-{tasse})+{premio_si_an}*(1-{tasse})"
+        formula = f"=({si_real}+{premio_si_an}+{sc})*(1-{tasse})-{sc}"
         output_cell(ws, 6, col, formula, fmt="0.00%")
 
-    # Riga 7: BTP Italia classico - usa YTM REALE effettivo (chi compra OGGI sul MOT)
+    # Riga 7: BTP Italia classico - usa YTM REALE effettivo (chi compra OGGI sul MOT).
+    # Anche il classico e' indicizzato FOI => stesso drag fiscale -t*FOI per scenario:
+    # reale netto = ytm_medio_netto - tasse*FOI
     label_cell(ws, 7, 1, "BTP Italia classico (YTM reale MOT)")
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
-        # YTM reale netto (capitale rivalutato tracking continuo => costante in REAL)
-        formula = f"={classico_real}*(1-{tasse})"
+        formula = f"={classico_real}*(1-{tasse})-{tasse}*{sc}"
         output_cell(ws, 7, col, formula, fmt="0.00%")
 
     # Riga 8: BTP Valore (step-up avg, rendimento REALE = (1+nom_netto)/(1+infl) - 1)
@@ -733,10 +739,13 @@ def build_break_even(wb):
     table_header(ws, 5, 1, "Avversario")
     table_header(ws, 5, 2, "Rendimento lordo")
     table_header(ws, 5, 3, "Rend. netto (1-12,5%)")
-    table_header(ws, 5, 4, "Soglia infl. break-even")
+    table_header(ws, 5, 4, "Soglia infl. break-even (lorda)")
     table_header(ws, 5, 5, "Verdetto")
 
-    si_netto_an = "('1 - Parametri'!B5+('1 - Parametri'!B7)/5)*(1-'1 - Parametri'!B8)"
+    # Break-even Si vs nominale: stessa tassazione 12,5% su entrambi i lati
+    # => le tasse si ELIDONO: FOI_BE = nom_LORDO - (fisso_si + premio_si/durata)
+    # (NON moltiplicare per (1-t): la soglia e' una differenza di rendimenti LORDI)
+    si_lordo_an = "('1 - Parametri'!B5+('1 - Parametri'!B7)/5)"
     tasse = "'1 - Parametri'!B8"
 
     # BTP Futura: cedole step-up 4+4+4 lorde nominali, medie pesate
@@ -756,8 +765,10 @@ def build_break_even(wb):
     for r, lbl, ref in avversari:
         label_cell(ws, r, 1, lbl)
         output_cell(ws, r, 2, ref, fmt="0.00%")
+        # Col C: rendimento netto SOLO informativo (non entra nel break-even)
         output_cell(ws, r, 3, f"=B{r}*(1-{tasse})", fmt="0.00%")
-        output_cell(ws, r, 4, f"=C{r}-{si_netto_an}", fmt="0.00%")
+        # Col D: soglia LORDA (vedi commento sopra) - usata da verdetto IF e bar chart
+        output_cell(ws, r, 4, f"=B{r}-{si_lordo_an}", fmt="0.00%")
         # Verdetto: ROUND*100&"%" per locale-safe
         output_cell(ws, r, 5, f'=IF(D{r}<=0,"Si vince SEMPRE",IF(D{r}>=0.045,"Si perde quasi sempre","Si vince se FOI > "&ROUND(D{r}*100,1)&"%"))', fmt="@")
 
@@ -960,7 +971,7 @@ def build_calcolatore(wb):
     return ws
 
 
-def main():
+def main(out_path: str | None = None):
     wb = Workbook()
 
     # Cover info
@@ -1002,11 +1013,26 @@ def main():
     build_profili(wb)
     build_calcolatore(wb)
 
-    out = THIS_DIR.parent / "simulatori" / "btp_si_compare_2026.xlsx"
+    # Output: di default nel repo STAGING private (pattern release_excel.py:
+    # staging -> public solo al go-live via tools/release_excel.py --slug btp_si_compare).
+    # MAI scrivere direttamente nel repo public da questo builder.
+    if out_path is not None:
+        out = Path(out_path)
+    else:
+        staging_root = Path("e:/sviluppo/marco-fire-simulatori-staging")
+        if not staging_root.exists():
+            sys.exit("FAIL: repo staging non trovato (e:/sviluppo/marco-fire-simulatori-staging). "
+                     "Usa --out <path> per un output esplicito.")
+        out = staging_root / "simulatori" / "btp_si_compare_2026.xlsx"
     out.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out)
     print(f"[OK] {out}  ({out.stat().st_size / 1024:.1f} KB)")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--out", default=None,
+                   help="override path output .xlsx (default: repo staging simulatori/)")
+    args = p.parse_args()
+    main(args.out)

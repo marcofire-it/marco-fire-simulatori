@@ -40,6 +40,10 @@ def run(cmd: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedPr
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--slug", required=True, help="es. tassazione_etf, pac, pensione_2056")
+    p.add_argument("--overwrite", action="store_true",
+                   help="se public xlsx esiste gia' lo sovrascrive (re-release, es. dopo MEF day update)")
+    p.add_argument("--keep-staging", action="store_true",
+                   help="non rimuovere xlsx da staging dopo release (utile per re-release ripetuti)")
     args = p.parse_args()
 
     slug = args.slug.removesuffix("_2026")
@@ -50,8 +54,8 @@ def main() -> int:
 
     if not staging_xlsx.exists():
         sys.exit(f"FAIL: {staging_xlsx} non trovato in staging")
-    if public_xlsx.exists():
-        sys.exit(f"FAIL: {public_xlsx} esiste gia' in public (gia' rilasciato?)")
+    if public_xlsx.exists() and not args.overwrite:
+        sys.exit(f"FAIL: {public_xlsx} esiste gia' in public. Usa --overwrite per re-release.")
     if not PUBLIC_ROOT.exists() or not STAGING_ROOT.exists():
         sys.exit("FAIL: uno dei due repo locali non esiste")
 
