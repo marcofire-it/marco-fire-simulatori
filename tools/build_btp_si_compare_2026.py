@@ -316,7 +316,8 @@ def build_btp_si(wb):
         output_cell(ws, r, 4, f"=C{r}*(1-$B$8)", fmt="0.00%")
         output_cell(ws, r, 5, f"=$B$9*D{r}", fmt="#,##0")
 
-    section_header(ws, 18, "Rendimento totale finale 5 anni (netto, con premio 0,6%)", span=5)
+    # span=6: la tabella sotto arriva alla col F (IRR reale netto)
+    section_header(ws, 18, "Rendimento totale finale 5 anni (netto, con premio 0,6%)", span=6)
     table_header(ws, 19, 1, "Scenario")
     table_header(ws, 19, 2, "Cedole nette tot 5y")
     table_header(ws, 19, 3, "Premio netto fedelta'")
@@ -530,7 +531,8 @@ def build_btp_futura(wb):
     label_cell(ws, 12, 1, "Capitale")
     output_cell(ws, 12, 2, "='1 - Parametri'!B43", fmt="#,##0")
 
-    section_header(ws, 14, "Scenari di PIL nominale e premio fedelta'", span=5)
+    # span=6: la tabella sotto arriva alla col F (IRR nom netto annuo)
+    section_header(ws, 14, "Scenari di PIL nominale e premio fedelta'", span=6)
     table_header(ws, 15, 1, "Scenario PIL nominale medio")
     table_header(ws, 15, 2, "PIL nom. medio")
     table_header(ws, 15, 3, "Premio fed. atteso")
