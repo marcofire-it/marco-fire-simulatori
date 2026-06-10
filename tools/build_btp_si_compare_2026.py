@@ -37,6 +37,41 @@ from _excel_helpers import (
     label_cell, input_cell, output_cell, table_header, note_cell, build_cover,
 )
 
+# ============================================================================
+# Etichette PARAMETRICHE locale-safe.
+# Ogni etichetta/titolo/nota che cita un numero derivato dal foglio
+# "1 - Parametri" (patchato da sync_btp_params.py) e' una FORMULA, cosi'
+# quando il sync aggiorna i parametri (es. tasso Si 1,2 -> 1,8) anche le
+# etichette seguono. NIENTE TEXT(): le format string sono locale-dipendenti.
+# Pattern: ROUND(x*100,N)&"" coercizione numero->testo + SUBSTITUTE "." -> ","
+# per la virgola italiana (no-op se la locale e' gia' italiana).
+# ============================================================================
+P = "'1 - Parametri'"
+
+
+def pct_txt(ref: str, dec: int = 1) -> str:
+    """Frammento formula: cella frazionaria -> testo percentuale IT (0.018 -> '1,8')."""
+    return f'SUBSTITUTE(ROUND({ref}*100,{dec})&"",".",",")'
+
+
+def num_txt(ref: str, dec: int = 2) -> str:
+    """Frammento formula: cella numerica -> testo IT (101.97 -> '101,97')."""
+    return f'SUBSTITUTE(ROUND({ref},{dec})&"",".",",")'
+
+
+def _scen_lbl(idx: int, nome: str, ref: str) -> str:
+    """Etichetta scenario FOI parametrica (segue B37:B40 dei Parametri)."""
+    return f'="{idx} - {nome} "&{pct_txt(ref)}&"%"'
+
+
+# Etichette scenari FOI riusate dai fogli 2/3/4/5
+SCEN_LBL = [
+    _scen_lbl(1, "Disinflazione", f"{P}!B37"),
+    _scen_lbl(2, "Base BCE", f"{P}!B38"),
+    _scen_lbl(3, "Persistente", f"{P}!B39"),
+    _scen_lbl(4, "Stress geopol.", f"{P}!B40"),
+]
+
 
 def _style_axes(ch, y_fmt="0.00%", x_fmt=None, plot_x=0.12, plot_y=0.14, plot_w=0.74, plot_h=0.68):
     """Configura assi: tick labels visibili + gridlines chiare + chart area con margini extra
@@ -155,9 +190,9 @@ def build_params(wb):
     section_header(ws, 4, "BTP Italia Si - emissione 15-19 giugno 2026", span=SPAN)
     rows = [
         ("Tasso fisso reale annuo (possibile rialzo a chiusura 19/06)", 0.012, "0.00%", "Tasso minimo garantito annunciato dal MEF in apertura emissione. Puo' essere rivisto AL RIALZO (mai al ribasso) alla chiusura del collocamento, ven 19/06/2026 ore 13. Se rivisto, aggiorna SOLO questa cella e tutte le simulazioni si ricalcolano."),
-        ("Durata (anni)",                                  5,     "0",     "Fissa: 5 anni"),
-        ("Premio fedelta' finale",                         0.006, "0.00%", "Confermato MEF: 0,6% del capitale (solo se mantenuto a scadenza)"),
-        ("Tassazione titoli di stato",                     0.125, "0.0%",  "12,5% su cedole + premio finale"),
+        ("Durata (anni)",                                  5,     "0",     '="Fissa: "&B6&" anni"'),
+        ("Premio fedelta' finale",                         0.006, "0.00%", f'="Confermato MEF: "&{pct_txt("B7")}&"% del capitale (solo se mantenuto a scadenza)"'),
+        ("Tassazione titoli di stato",                     0.125, "0.0%",  f'="Aliquota "&{pct_txt("B8")}&"% su cedole + premio finale"'),
     ]
     for i, (lbl, val, fmt, note) in enumerate(rows, start=5):
         label_cell(ws, i, 1, lbl)
@@ -166,8 +201,8 @@ def build_params(wb):
 
     section_header(ws, 10, "BTP Italia classico in essere (riferimenti secondario MOT)", span=SPAN)
     rows = [
-        ("BTP Italia mar 2028 - cedola reale annua",  0.020, "0.00%", "MEF IT0005532723, scadenza 14/03/2028: tasso reale 2,0% sul prospetto (rendimento per chi compra a 100)."),
-        ("BTP Italia giu 2030 - cedola reale annua",  0.016, "0.00%", "MEF IT0005497000, scadenza 28/06/2030: tasso reale 1,6% sul prospetto"),
+        ("BTP Italia mar 2028 - cedola reale annua",  0.020, "0.00%", f'="MEF IT0005532723, scadenza 14/03/2028: tasso reale "&{pct_txt("B11")}&"% sul prospetto (rendimento per chi compra a 100)."'),
+        ("BTP Italia giu 2030 - cedola reale annua",  0.016, "0.00%", f'="MEF IT0005497000, scadenza 28/06/2030: tasso reale "&{pct_txt("B12")}&"% sul prospetto"'),
     ]
     for i, (lbl, val, fmt, note) in enumerate(rows, start=11):
         label_cell(ws, i, 1, lbl)
@@ -176,10 +211,10 @@ def build_params(wb):
 
     section_header(ws, 14, "BTP Valore (7a emissione marzo 2026, ISIN IT0005696338, secondario)", span=SPAN)
     rows = [
-        ("Cedola step-up anni 1-2",  0.0260, "0.00%", "MEF: 2,60% definitivo (cedole trimestrali)"),
-        ("Cedola step-up anni 3-4",  0.0320, "0.00%", "MEF: 3,20% definitivo (il 2,80 era il minimo garantito pre-collocamento)"),
-        ("Cedola step-up anni 5-6",  0.0380, "0.00%", "MEF: 3,80% (definitivo)"),
-        ("Premio fedelta'",          0.008,  "0.00%", "MEF: 0,8% del capitale a scadenza (solo sottoscrittori in collocamento)"),
+        ("Cedola step-up anni 1-2",  0.0260, "0.00%", f'="MEF: "&{pct_txt("B15", 2)}&"% definitivo (cedole trimestrali)"'),
+        ("Cedola step-up anni 3-4",  0.0320, "0.00%", f'="MEF: "&{pct_txt("B16", 2)}&"% definitivo (il 2,80 era il minimo garantito pre-collocamento)"'),
+        ("Cedola step-up anni 5-6",  0.0380, "0.00%", f'="MEF: "&{pct_txt("B17", 2)}&"% (definitivo)"'),
+        ("Premio fedelta'",          0.008,  "0.00%", f'="MEF: "&{pct_txt("B18")}&"% del capitale a scadenza (solo sottoscrittori in collocamento)"'),
         ("Durata (anni)",            6,      "0",     "Scadenza 10 mar 2032"),
     ]
     for i, (lbl, val, fmt, note) in enumerate(rows, start=15):
@@ -189,11 +224,11 @@ def build_params(wb):
 
     section_header(ws, 21, "BTP Futura 4a emissione nov 2021 (sospeso, ISIN IT0005466351 sul MOT)", span=SPAN)
     rows = [
-        ("Cedola step-up anni 1-4",  0.0075, "0.00%", "MEF 4a emissione nov 2021, step DEFINITIVI: 0,75% (NON 0,35 = 2a emissione)"),
-        ("Cedola step-up anni 5-8",  0.0135, "0.00%", "MEF definitivo: 1,35% (anni 5-8)"),
-        ("Cedola step-up anni 9-12", 0.0170, "0.00%", "MEF definitivo: 1,70% (anni 9-12)"),
-        ("Premio fedelta' min (PIL)", 0.004, "0.00%", "Floor 0,4% se PIL nominale basso (solo sottoscrittori originali)"),
-        ("Premio fedelta' max (PIL)", 0.030, "0.00%", "Cap 3,0% se PIL nominale alto (solo sottoscrittori originali)"),
+        ("Cedola step-up anni 1-4",  0.0075, "0.00%", f'="MEF 4a emissione nov 2021, step DEFINITIVI: "&{pct_txt("B22", 2)}&"% (NON 0,35 = 2a emissione)"'),
+        ("Cedola step-up anni 5-8",  0.0135, "0.00%", f'="MEF definitivo: "&{pct_txt("B23", 2)}&"% (anni 5-8)"'),
+        ("Cedola step-up anni 9-12", 0.0170, "0.00%", f'="MEF definitivo: "&{pct_txt("B24", 2)}&"% (anni 9-12)"'),
+        ("Premio fedelta' min (PIL)", 0.004, "0.00%", f'="Floor "&{pct_txt("B25")}&"% se PIL nominale basso (solo sottoscrittori originali)"'),
+        ("Premio fedelta' max (PIL)", 0.030, "0.00%", f'="Cap "&{pct_txt("B26")}&"% se PIL nominale alto (solo sottoscrittori originali)"'),
         ("Durata (anni)",            12,     "0",     "4a emissione (4+4+4 step-up), scadenza 16/11/2033"),
     ]
     for i, (lbl, val, fmt, note) in enumerate(rows, start=22):
@@ -203,23 +238,23 @@ def build_params(wb):
 
     section_header(ws, 29, "BTP nominali - curva 2026 (asta MEF)", span=SPAN)
     rows = [
-        ("BTP 2y - rendimento lordo (feb 2028)",   0.0220, "0.00%", "MEF asta: 2,20%"),
-        ("BTP 3y - rendimento lordo (mar 2029)",   0.0240, "0.00%", "MEF asta: 2,40%"),
+        ("BTP 2y - rendimento lordo (feb 2028)",   0.0220, "0.00%", f'="MEF asta: "&{pct_txt("B30", 2)}&"%"'),
+        ("BTP 3y - rendimento lordo (mar 2029)",   0.0240, "0.00%", f'="MEF asta: "&{pct_txt("B31", 2)}&"%"'),
         ("BTP 5y - rendimento lordo (stima)",      0.0290, "0.00%", "Stima interpolata 2y-7y curva 2026"),
-        ("BTP 7y - rendimento lordo (mar 2033)",   0.0315, "0.00%", "MEF asta: 3,15%"),
-        ("BTP 10y - rendimento lordo (feb 2036)",  0.0345, "0.00%", "MEF asta: 3,45%"),
+        ("BTP 7y - rendimento lordo (mar 2033)",   0.0315, "0.00%", f'="MEF asta: "&{pct_txt("B33", 2)}&"%"'),
+        ("BTP 10y - rendimento lordo (feb 2036)",  0.0345, "0.00%", f'="MEF asta: "&{pct_txt("B34", 2)}&"%"'),
     ]
     for i, (lbl, val, fmt, note) in enumerate(rows, start=30):
         label_cell(ws, i, 1, lbl)
         input_cell(ws, i, 2, val, fmt=fmt)
         note_cell(ws, i, 4, note)
 
-    section_header(ws, 36, "Scenari inflazione FOI media 5 anni (per simulazioni)", span=SPAN)
+    section_header(ws, 36, '="Scenari inflazione FOI media "&B6&" anni (per simulazioni)"', span=SPAN)
     rows = [
-        ("Scenario 1: Disinflazione",   0.010, "0.0%", "BCE stretta riuscita - inflazione 1,0%"),
-        ("Scenario 2: Base BCE",        0.020, "0.0%", "Target 2,0% medio termine"),
-        ("Scenario 3: Persistente",     0.030, "0.0%", "Inflazione struturale 3,0%"),
-        ("Scenario 4: Stress geopol.",  0.045, "0.0%", "Brent 120 USD persistente - 4,5%"),
+        ("Scenario 1: Disinflazione",   0.010, "0.0%", f'="BCE stretta riuscita - inflazione "&{pct_txt("B37")}&"%"'),
+        ("Scenario 2: Base BCE",        0.020, "0.0%", f'="Target "&{pct_txt("B38")}&"% medio termine"'),
+        ("Scenario 3: Persistente",     0.030, "0.0%", f'="Inflazione strutturale "&{pct_txt("B39")}&"%"'),
+        ("Scenario 4: Stress geopol.",  0.045, "0.0%", f'="Brent 120 USD persistente - "&{pct_txt("B40")}&"%"'),
     ]
     for i, (lbl, val, fmt, note) in enumerate(rows, start=37):
         label_cell(ws, i, 1, lbl)
@@ -242,23 +277,23 @@ def build_params(wb):
     input_cell(ws, 46, 2, 101.97, fmt="0.00")
     label_cell(ws, 46, 3, "Anni residui")
     input_cell(ws, 46, 4, 1.8, fmt="0.0")
-    note_cell(ws, 47, 1, "Quotazione ufficiale MOT 09/06/2026: 101,97 (100 = par). Aggiorna col valore corrente quando cambia il mercato.", span=SPAN)
+    note_cell(ws, 47, 1, f'="Quotazione ufficiale MOT corrente: "&{num_txt("B46")}&" (100 = par). Aggiorna col valore corrente quando cambia il mercato."', span=SPAN)
 
     label_cell(ws, 48, 1, "Prezzo secondario BTP Italia giu 2030")
     input_cell(ws, 48, 2, 101.92, fmt="0.00")
     label_cell(ws, 48, 3, "Anni residui")
     input_cell(ws, 48, 4, 4, fmt="0.0")  # giu 2030 - giu 2026 = 4 anni residui
-    note_cell(ws, 49, 1, "Quotazione ufficiale MOT 09/06/2026: 101,92. Aggiorna col valore corrente quando cambia il mercato.", span=SPAN)
+    note_cell(ws, 49, 1, f'="Quotazione ufficiale MOT corrente: "&{num_txt("B48")}&". Aggiorna col valore corrente quando cambia il mercato."', span=SPAN)
 
     # YTM reale effettivo (bond equivalent yield approssimato)
     # YTM = (cedola + (100 - prezzo)/N) / ((100 + prezzo)/2)
     label_cell(ws, 50, 1, "YTM reale mar 2028 (per chi compra al MOT oggi)")
     output_cell(ws, 50, 2, "=(B11*100+(100-B46)/D46)/((100+B46)/2)", fmt="0.00%")
-    note_cell(ws, 51, 1, "Formula bond equiv. yield. Cedola 2,0% sul prospetto, ma a prezzo 101,97 con 1,8y residui → YTM reale ~0,9%.", span=SPAN)
+    note_cell(ws, 51, 1, f'="Formula bond equiv. yield. Cedola "&{pct_txt("B11")}&"% sul prospetto, ma a prezzo "&{num_txt("B46")}&" con "&{num_txt("D46", 1)}&"y residui → YTM reale ~"&{pct_txt("B50", 2)}&"%."', span=SPAN)
 
     label_cell(ws, 52, 1, "YTM reale giu 2030 (per chi compra al MOT oggi)")
     output_cell(ws, 52, 2, "=(B12*100+(100-B48)/D48)/((100+B48)/2)", fmt="0.00%")
-    note_cell(ws, 53, 1, "Cedola 1,6% sul prospetto, a prezzo 101,92 con 4y residui → YTM reale ~1,1%.", span=SPAN)
+    note_cell(ws, 53, 1, f'="Cedola "&{pct_txt("B12")}&"% sul prospetto, a prezzo "&{num_txt("B48")}&" con "&{num_txt("D48", 1)}&"y residui → YTM reale ~"&{pct_txt("B52", 2)}&"%."', span=SPAN)
 
     section_header(ws, 55, "YTM reale medio classico per il confronto matrice (media ponderata 2 ISIN)", span=SPAN)
     label_cell(ws, 56, 1, "YTM reale effettivo (media mar 2028 + giu 2030)")
@@ -283,12 +318,13 @@ def build_params(wb):
     input_cell(ws, 64, 2, 98.65, fmt="0.00")
     label_cell(ws, 64, 3, "Anni residui")
     input_cell(ws, 64, 4, 5.75, fmt="0.00")
-    note_cell(ws, 65, 1, "Quotazione ufficiale MOT 09/06/2026: 98,65 (SOTTO la pari). Scadenza 10/03/2032. Il premio fedelta' 0,8% NON spetta a chi compra sul MOT.", span=SPAN)
+    note_cell(ws, 65, 1, f'="Quotazione ufficiale MOT corrente: "&{num_txt("B64")}&IF(B64<100," (SOTTO la pari)",IF(B64>100," (sopra la pari)"," (alla pari)"))&". Scadenza 10/03/2032. Il premio fedelta\' "&{pct_txt("B18")}&"% NON spetta a chi compra sul MOT."', span=SPAN)
     label_cell(ws, 66, 1, "Prezzo MOT BTP Futura nov 2033")
     input_cell(ws, 66, 2, 86.15, fmt="0.00")
     label_cell(ws, 66, 3, "Anni residui")
     input_cell(ws, 66, 4, 7.4, fmt="0.00")
-    note_cell(ws, 67, 1, "Quotazione ufficiale MOT 09/06/2026: 86,15 (forte sconto sotto par → YTM lordo ~3,65%). Scadenza 16/11/2033. Il doppio premio PIL NON spetta a chi compra sul MOT.", span=SPAN)
+    futura_ytm_ref = "'5 - BTP Futura'!B27"
+    note_cell(ws, 67, 1, f'="Quotazione ufficiale MOT corrente: "&{num_txt("B66")}&" → YTM lordo ~"&{pct_txt(futura_ytm_ref, 2)}&"%. Scadenza 16/11/2033. Il doppio premio PIL NON spetta a chi compra sul MOT."', span=SPAN)
 
     # ==== Anagrafica ISIN (sync da JSON master) ====
     section_header(ws, 69, "Anagrafica ISIN (Borsa Italiana MOT)", span=SPAN)
@@ -334,10 +370,10 @@ def build_btp_si(wb):
     table_header(ws, 12, 4, "Cedola netta annua")
     table_header(ws, 12, 5, "Importo netto su cap.")
     scen_rows = [
-        (13, "1 - Disinflazione 1,0%",  "='1 - Parametri'!B37"),
-        (14, "2 - Base BCE 2,0%",       "='1 - Parametri'!B38"),
-        (15, "3 - Persistente 3,0%",    "='1 - Parametri'!B39"),
-        (16, "4 - Stress geopol. 4,5%", "='1 - Parametri'!B40"),
+        (13, SCEN_LBL[0], "='1 - Parametri'!B37"),
+        (14, SCEN_LBL[1], "='1 - Parametri'!B38"),
+        (15, SCEN_LBL[2], "='1 - Parametri'!B39"),
+        (16, SCEN_LBL[3], "='1 - Parametri'!B40"),
     ]
     for r, lbl, ref in scen_rows:
         label_cell(ws, r, 1, lbl)
@@ -346,9 +382,9 @@ def build_btp_si(wb):
         output_cell(ws, r, 4, f"=C{r}*(1-$B$8)", fmt="0.00%")
         output_cell(ws, r, 5, f"=$B$9*D{r}", fmt="#,##0")
 
-    section_header(ws, 18, "Rendimento totale finale 5 anni (netto, con premio 0,6%)", span=SPAN)
+    section_header(ws, 18, f'="Rendimento totale finale "&{P}!B6&" anni (netto, con premio "&{pct_txt(P + "!B7")}&"%)"', span=SPAN)
     table_header(ws, 19, 1, "Scenario")
-    table_header(ws, 19, 2, "Cedole nette tot 5y")
+    table_header(ws, 19, 2, '="Cedole nette tot "&$B$6&"y"')
     table_header(ws, 19, 3, "Premio netto fedelta'")
     table_header(ws, 19, 4, "Tot. netto incassato")
     table_header(ws, 19, 5, "IRR nom netto annuo (lineare)")
@@ -409,15 +445,15 @@ def build_btp_classico(wb):
 
     section_header(ws, 10, "Meccanismo classico: cedola reale + capitale rivalutato", span=SPAN)
     table_header(ws, 11, 1, "Scenario inflazione")
-    table_header(ws, 11, 2, "FOI cumulata 5y")
+    table_header(ws, 11, 2, '="FOI cumulata "&$B$6&"y"')
     table_header(ws, 11, 3, "Capitale rivalutato")
-    table_header(ws, 11, 4, "Cedole nette 5y (su cap. rivalut.)")
-    table_header(ws, 11, 5, "Tot. netto 5y (cedole + rivalut.)")
+    table_header(ws, 11, 4, '="Cedole nette "&$B$6&"y (su cap. rivalut.)"')
+    table_header(ws, 11, 5, '="Tot. netto "&$B$6&"y (cedole + rivalut.)"')
     scen_rows = [
-        (12, "1 - Disinflazione 1,0%",  "='1 - Parametri'!B37"),
-        (13, "2 - Base BCE 2,0%",       "='1 - Parametri'!B38"),
-        (14, "3 - Persistente 3,0%",    "='1 - Parametri'!B39"),
-        (15, "4 - Stress geopol. 4,5%", "='1 - Parametri'!B40"),
+        (12, SCEN_LBL[0], "='1 - Parametri'!B37"),
+        (13, SCEN_LBL[1], "='1 - Parametri'!B38"),
+        (14, SCEN_LBL[2], "='1 - Parametri'!B39"),
+        (15, SCEN_LBL[3], "='1 - Parametri'!B40"),
     ]
     for r, lbl, ref in scen_rows:
         label_cell(ws, r, 1, lbl)
@@ -432,7 +468,7 @@ def build_btp_classico(wb):
 
     section_header(ws, 17, "IRR netto annuo a confronto", span=SPAN)
     table_header(ws, 18, 1, "Scenario")
-    table_header(ws, 18, 2, "Tot. netto 5y")
+    table_header(ws, 18, 2, '="Tot. netto "&$B$6&"y"')
     table_header(ws, 18, 3, "IRR netto annuo")
     for r, lbl, _ in scen_rows:
         rr = r + 7  # 19, 20, 21, 22
@@ -443,7 +479,8 @@ def build_btp_classico(wb):
     section_header(ws, 24, "NOTA: vantaggio classico vs Si quando inflazione e' alta (capitale +)", span=SPAN)
     note_cell(ws, 25, 1, "Classico: l'inflazione cresce IL CAPITALE (effetto compounding). "
                           "Si: l'inflazione cresce SOLO la cedola annua. "
-                          "Trade-off: il classico costa di piu' sul secondario (no premio se compri usato).", span=SPAN)
+                          "Trade-off: sul secondario il classico si paga al prezzo MOT corrente (vedi foglio Parametri) "
+                          "e chi compra usato NON ha il premio fedelta'.", span=SPAN)
 
     # Bar chart: IRR netto annuo per scenario (col C = IRR, rows 18-22)
     add_bar_chart(
@@ -498,9 +535,9 @@ def build_btp_valore(wb):
     table_header(ws, 14, 4, "Importo netto x anno")
     table_header(ws, 14, 5, "Importo netto x fase (2y)")
     fasi = [
-        (15, "Anni 1-2 (2,60%)",  "B5"),
-        (16, "Anni 3-4 (3,20%)",  "B6"),
-        (17, "Anni 5-6 (3,80%)",  "B7"),
+        (15, f'="Anni 1-2 ("&{pct_txt("B5", 2)}&"%)"',  "B5"),
+        (16, f'="Anni 3-4 ("&{pct_txt("B6", 2)}&"%)"',  "B6"),
+        (17, f'="Anni 5-6 ("&{pct_txt("B7", 2)}&"%)"',  "B7"),
     ]
     for r, lbl, src in fasi:
         label_cell(ws, r, 1, lbl)
@@ -509,12 +546,12 @@ def build_btp_valore(wb):
         output_cell(ws, r, 4, f"=$B$11*C{r}", fmt="#,##0")
         output_cell(ws, r, 5, f"=D{r}*2", fmt="#,##0")
 
-    section_header(ws, 19, "Rendimento totale netto 6 anni", span=SPAN)
-    label_cell(ws, 20, 1, "Tot. cedole nette 6y")
+    section_header(ws, 19, '="Rendimento totale netto "&B9&" anni"', span=SPAN)
+    label_cell(ws, 20, 1, '="Tot. cedole nette "&B9&"y"')
     output_cell(ws, 20, 2, "=E15+E16+E17", fmt="#,##0")
     label_cell(ws, 21, 1, "Premio fedelta' netto")
     output_cell(ws, 21, 2, "=B11*B8*(1-B10)", fmt="#,##0")
-    label_cell(ws, 22, 1, "Tot. netto 6y")
+    label_cell(ws, 22, 1, '="Tot. netto "&B9&"y"')
     output_cell(ws, 22, 2, "=B20+B21", fmt="#,##0")
     label_cell(ws, 23, 1, "IRR nom netto annuo (lineare)")
     # Lineare: (media cedole lorde step-up + premio/durata)*(1-tasse) -> ~2,92% con default
@@ -525,9 +562,10 @@ def build_btp_valore(wb):
     note_cell(ws, 26, 1, "Cedole step-up FISSE in nominale. In inflazione alta perde potere d'acquisto reale. "
                           "Vantaggio: cedola trimestrale (vs semestrale altri BTP) per pianificazione cassa.", span=SPAN)
 
-    # ==== Comprato OGGI sul MOT: YTM a prezzo di mercato (sotto la pari) ====
-    section_header(ws, 28, "Comprato OGGI sul MOT - YTM a prezzo 98,65 (sotto la pari)", span=SPAN)
-    label_cell(ws, 29, 1, "Prezzo MOT (uff. 09/06/2026)")
+    # ==== Comprato OGGI sul MOT: YTM a prezzo di mercato corrente ====
+    pb64 = f"{P}!B64"
+    section_header(ws, 28, f'="Comprato OGGI sul MOT - YTM a prezzo "&{num_txt(pb64)}&IF({pb64}<100," (sotto la pari)",IF({pb64}>100," (sopra la pari)"," (alla pari)"))', span=SPAN)
+    label_cell(ws, 29, 1, "Prezzo MOT corrente (vedi foglio Parametri)")
     output_cell(ws, 29, 2, "='1 - Parametri'!B64", fmt="0.00")
     label_cell(ws, 30, 1, "Anni residui (scad. 10/03/2032)")
     output_cell(ws, 30, 2, "='1 - Parametri'!D64", fmt="0.00")
@@ -537,22 +575,19 @@ def build_btp_valore(wb):
     label_cell(ws, 32, 1, "YTM lordo (formula bond equivalent yield)")
     # BEY: (cedola_media + (100-P)/N) / ((100+P)/2) — stessa convenzione del foglio Parametri B50/B52
     output_cell(ws, 32, 2, "=(B31*100+(100-B29)/B30)/((100+B29)/2)", fmt="0.00%")
-    label_cell(ws, 33, 1, "YTM netto (tassazione 12,5%)")
+    label_cell(ws, 33, 1, f'="YTM netto (tassazione "&{pct_txt("B10")}&"%)"')
     output_cell(ws, 33, 2, "=B32*(1-B10)", fmt="0.00%")
-    note_cell(ws, 34, 1, "Comprato OGGI SOTTO la pari (98,65): il mercato sconta tassi saliti dopo il collocamento, "
-                          "quindi il YTM lordo (~3,48%) e' SUPERIORE alla media delle cedole (~3,23% sugli anni residui). "
-                          "ATTENZIONE: il premio fedelta' 0,8% NON spetta a chi compra sul MOT (solo sottoscrittori in collocamento), "
-                          "percio' il YTM qui sopra NON lo include.", span=SPAN)
+    note_cell(ws, 34, 1, f'="Prezzo MOT corrente "&{num_txt("B29")}&": YTM lordo ~"&{pct_txt("B32", 2)}&"% vs media cedole residue ~"&{pct_txt("B31", 2)}&"%. Se il prezzo e\' sotto la pari il YTM supera la media cedole (sconto), se sopra la riduce. ATTENZIONE: il premio fedelta\' "&{pct_txt("B8")}&"% NON spetta a chi compra sul MOT (solo sottoscrittori in collocamento), percio\' il YTM qui sopra NON lo include."', span=SPAN)
 
     section_header(ws, 36, "IRR reale netto per scenario (da YTM MOT)", span=SPAN)
     table_header(ws, 37, 1, "Scenario inflazione")
     table_header(ws, 37, 2, "Infl. FOI media")
     table_header(ws, 37, 3, "IRR reale netto (YTM netto - FOI)")
     mot_scen = [
-        (38, "1 - Disinflazione 1,0%",  "='1 - Parametri'!B37"),
-        (39, "2 - Base BCE 2,0%",       "='1 - Parametri'!B38"),
-        (40, "3 - Persistente 3,0%",    "='1 - Parametri'!B39"),
-        (41, "4 - Stress geopol. 4,5%", "='1 - Parametri'!B40"),
+        (38, SCEN_LBL[0], "='1 - Parametri'!B37"),
+        (39, SCEN_LBL[1], "='1 - Parametri'!B38"),
+        (40, SCEN_LBL[2], "='1 - Parametri'!B39"),
+        (41, SCEN_LBL[3], "='1 - Parametri'!B40"),
     ]
     for r, lbl, ref in mot_scen:
         label_cell(ws, r, 1, lbl)
@@ -609,13 +644,14 @@ def build_btp_futura(wb):
     table_header(ws, 15, 1, "Scenario PIL nominale medio")
     table_header(ws, 15, 2, "PIL nom. medio")
     table_header(ws, 15, 3, "Premio fed. atteso")
-    table_header(ws, 15, 4, "Cedole nette 12y")
-    table_header(ws, 15, 5, "Tot. netto 12y")
+    table_header(ws, 15, 4, '="Cedole nette "&$B$10&"y"')
+    table_header(ws, 15, 5, '="Tot. netto "&$B$10&"y"')
     table_header(ws, 15, 6, "IRR nom netto annuo (lineare)")
+    # Etichette parametriche sull'input PIL della stessa riga (col B)
     pil_scen = [
-        (16, "Bassa (PIL 1,5%)",  0.015),
-        (17, "Base (PIL 3,0%)",   0.030),
-        (18, "Alta (PIL 4,5%)",   0.045),
+        (16, f'="Bassa (PIL "&{pct_txt("B16")}&"%)"',  0.015),
+        (17, f'="Base (PIL "&{pct_txt("B17")}&"%)"',   0.030),
+        (18, f'="Alta (PIL "&{pct_txt("B18")}&"%)"',   0.045),
     ]
     for r, lbl, pil_v in pil_scen:
         label_cell(ws, r, 1, lbl)
@@ -630,13 +666,11 @@ def build_btp_futura(wb):
         output_cell(ws, r, 6, f"=E{r}/$B$12/$B$10", fmt="0.00%")
 
     section_header(ws, 20, "NOTA: BTP Futura NON e' piu' emesso dal 2021 (ricostruzione storica = contesto)", span=SPAN)
-    note_cell(ws, 21, 1, "La tabella sopra RICOSTRUISCE il collocamento nov 2021 (chi sottoscrisse a 100 con premio PIL). "
-                          "Struttura step-up 4+4+4 anni DEFINITIVA 4a emissione (1-4: 0,75%, 5-8: 1,35%, 9-12: 1,70%). "
-                          "Per chi compra OGGI vale la sezione qui sotto: prezzo MOT 86,15 e NIENTE premio PIL.", span=SPAN)
+    note_cell(ws, 21, 1, f'="La tabella sopra RICOSTRUISCE il collocamento nov 2021 (chi sottoscrisse a 100 con premio PIL). Struttura step-up 4+4+4 anni DEFINITIVA 4a emissione (1-4: "&{pct_txt("B5", 2)}&"%, 5-8: "&{pct_txt("B6", 2)}&"%, 9-12: "&{pct_txt("B7", 2)}&"%). Per chi compra OGGI vale la sezione qui sotto: prezzo MOT "&{num_txt("B24")}&" e NIENTE premio PIL."', span=SPAN)
 
-    # ==== Comprato OGGI sul MOT: prezzo 86,15 → YTM lordo ~3,65% ====
-    section_header(ws, 23, "Comprato OGGI sul MOT - prezzo 86,15 → YTM lordo ~3,65%", span=SPAN)
-    label_cell(ws, 24, 1, "Prezzo MOT (uff. 09/06/2026)")
+    # ==== Comprato OGGI sul MOT: prezzo corrente → YTM lordo (parametrici) ====
+    section_header(ws, 23, f'="Comprato OGGI sul MOT - prezzo "&{num_txt("B24")}&" → YTM lordo ~"&{pct_txt("B27", 2)}&"%"', span=SPAN)
+    label_cell(ws, 24, 1, "Prezzo MOT corrente (vedi foglio Parametri)")
     output_cell(ws, 24, 2, "='1 - Parametri'!B66", fmt="0.00")
     label_cell(ws, 25, 1, "Anni residui (scad. 16/11/2033)")
     output_cell(ws, 25, 2, "='1 - Parametri'!D66", fmt="0.00")
@@ -646,22 +680,19 @@ def build_btp_futura(wb):
     label_cell(ws, 27, 1, "YTM lordo (formula bond equivalent yield)")
     # BEY: (cedola_media + (100-P)/N) / ((100+P)/2) — stessa convenzione del foglio Parametri B50/B52
     output_cell(ws, 27, 2, "=(B26*100+(100-B24)/B25)/((100+B24)/2)", fmt="0.00%")
-    label_cell(ws, 28, 1, "YTM netto (tassazione 12,5%)")
+    label_cell(ws, 28, 1, f'="YTM netto (tassazione "&{pct_txt("B11")}&"%)"')
     output_cell(ws, 28, 2, "=B27*(1-B11)", fmt="0.00%")
-    note_cell(ws, 29, 1, "Il forte sconto sotto par (86,15) compensa le cedole basse: quasi tutto il rendimento "
-                          "arriva dal capital gain a scadenza (100-86,15 su 7,4 anni). "
-                          "ATTENZIONE: il doppio premio PIL spetta SOLO ai sottoscrittori originali del nov 2021, "
-                          "NON a chi compra sul MOT — il YTM qui sopra correttamente lo esclude.", span=SPAN)
+    note_cell(ws, 29, 1, f'="Lo sconto/premio sul prezzo MOT corrente ("&{num_txt("B24")}&") si somma alle cedole: parte del rendimento arriva dal capital gain a scadenza (100 - "&{num_txt("B24")}&" su "&{num_txt("B25", 1)}&" anni). ATTENZIONE: il doppio premio PIL spetta SOLO ai sottoscrittori originali del nov 2021, NON a chi compra sul MOT — il YTM qui sopra correttamente lo esclude."', span=SPAN)
 
     section_header(ws, 31, "IRR reale netto per scenario (da YTM MOT)", span=SPAN)
     table_header(ws, 32, 1, "Scenario inflazione")
     table_header(ws, 32, 2, "Infl. FOI media")
     table_header(ws, 32, 3, "IRR reale netto (YTM netto - FOI)")
     mot_scen = [
-        (33, "1 - Disinflazione 1,0%",  "='1 - Parametri'!B37"),
-        (34, "2 - Base BCE 2,0%",       "='1 - Parametri'!B38"),
-        (35, "3 - Persistente 3,0%",    "='1 - Parametri'!B39"),
-        (36, "4 - Stress geopol. 4,5%", "='1 - Parametri'!B40"),
+        (33, SCEN_LBL[0], "='1 - Parametri'!B37"),
+        (34, SCEN_LBL[1], "='1 - Parametri'!B38"),
+        (35, SCEN_LBL[2], "='1 - Parametri'!B39"),
+        (36, SCEN_LBL[3], "='1 - Parametri'!B40"),
     ]
     for r, lbl, ref in mot_scen:
         label_cell(ws, r, 1, lbl)
@@ -717,7 +748,7 @@ def build_btp_nominali(wb):
     table_header(ws, 5, 3, "Cedola netta annua")
     table_header(ws, 5, 4, "Tot. cedole nette a scad.")
     table_header(ws, 5, 5, "Cedola netta annua EUR")
-    label_cell(ws, 6, 1, "Tassazione 12,5% applicata")
+    label_cell(ws, 6, 1, "Tassazione titoli di Stato applicata")
     label_cell(ws, 7, 1, "Capitale (default Parametri)")
     output_cell(ws, 6, 2, "='1 - Parametri'!B8", fmt="0.0%")
     output_cell(ws, 7, 2, "='1 - Parametri'!B43", fmt="#,##0")
@@ -733,7 +764,7 @@ def build_btp_nominali(wb):
 
     section_header(ws, 16, "NOTA: BTP nominali NON proteggono dall'inflazione", span=SPAN)
     note_cell(ws, 17, 1, "Rendimento certo in nominale. Se inflazione > rendimento, perdi potere d'acquisto. "
-                          "Vantaggio: tassi attualmente alti, e plusvalenza se i tassi BCE scendono.", span=SPAN)
+                          "Vantaggio: rendimento bloccato a scadenza, e possibile plusvalenza se i tassi BCE scendono.", span=SPAN)
 
     # Aggiungo cella header dedicata per il chart in B8 (riga vuota gia' presente)
     table_header(ws, 8, 2, "Rendim. lordo (curva)")
@@ -762,22 +793,22 @@ def build_matrice(wb):
 
     section_header(ws, 4, "Tutti i valori sono IRR REALI annui netti (lordo - tasse - inflazione)", span=SPAN)
     table_header(ws, 5, 1, "Strumento")
-    table_header(ws, 5, 2, "Infl. 1,0%")
-    table_header(ws, 5, 3, "Infl. 2,0%")
-    table_header(ws, 5, 4, "Infl. 3,0%")
-    table_header(ws, 5, 5, "Infl. 4,5%")
+    table_header(ws, 5, 2, f'="Infl. "&{pct_txt(P + "!B37")}&"%"')
+    table_header(ws, 5, 3, f'="Infl. "&{pct_txt(P + "!B38")}&"%"')
+    table_header(ws, 5, 4, f'="Infl. "&{pct_txt(P + "!B39")}&"%"')
+    table_header(ws, 5, 5, f'="Infl. "&{pct_txt(P + "!B40")}&"%"')
 
     # Tasso fisso Si (es. 1,2%) e' GIA' REALE -> rendimento reale = tasso fisso + premio annualizzato (cedola tassata)
     # Per gli altri (nominali fissi): rendimento reale LINEARE = nom_netto - infl (niente Fisher)
     # Valore/Futura: YTM lordo a prezzo MOT (fogli 4/5, formula BEY — niente premi: non spettano a chi compra oggi)
-    valore_ytm = "'4 - BTP Valore'!$B$32"   # YTM lordo MOT (~3,48% a 98,65)
-    futura_ytm = "'5 - BTP Futura'!$B$27"   # YTM lordo MOT (~3,65% a 86,15)
+    valore_ytm = "'4 - BTP Valore'!$B$32"   # YTM lordo MOT (BEY, segue il prezzo del foglio 4)
+    futura_ytm = "'5 - BTP Futura'!$B$27"   # YTM lordo MOT (BEY, segue il prezzo del foglio 5)
     nominale_5y = "'1 - Parametri'!B32"
     # Classico: usa YTM REALE EFFETTIVO (media mar 2028 + giu 2030) - tiene conto prezzo MOT
-    classico_real = "'1 - Parametri'!B56"  # YTM reale medio classico (~1,0% con prezzi MOT 09/06)
+    classico_real = "'1 - Parametri'!B56"  # YTM reale medio classico (segue i prezzi MOT)
     si_real = "'1 - Parametri'!B5"
     tasse = "'1 - Parametri'!B8"
-    premio_si_an = "('1 - Parametri'!B7)/5"  # 0,6%/5y = 0,12% annuo
+    premio_si_an = "('1 - Parametri'!B7/'1 - Parametri'!B6)"  # premio fedelta' annualizzato sulla durata
 
     scenari = [("'1 - Parametri'!B37", "B37"),
                ("'1 - Parametri'!B38", "B38"),
@@ -788,7 +819,7 @@ def build_matrice(wb):
     # cedola lorda = fisso + premio/durata + FOI; netta = *(1-tasse); reale = - FOI
     # => (fisso + premio/5 + FOI)*(1-t) - FOI  ==  (fisso + premio/5)*(1-t) - t*FOI
     # (drag fiscale: le tasse colpiscono anche la componente inflazione della cedola)
-    label_cell(ws, 6, 1, "BTP Italia Si (1,2% + FOI)")
+    label_cell(ws, 6, 1, f'="BTP Italia Si ("&{pct_txt(si_real)}&"% + FOI)"')
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
         # ROUND a 6 dp = tie deterministico con foglio 2 col F (S2 -> 0,91%)
@@ -806,7 +837,7 @@ def build_matrice(wb):
 
     # Riga 8: BTP Valore comprato OGGI sul MOT (YTM lordo BEY dal foglio 4, prezzo 98,65;
     # niente premio fedelta' per chi compra al secondario) - reale LINEARE: ytm*(1-tasse) - infl
-    label_cell(ws, 8, 1, "BTP Valore (YTM lordo MOT ~3,48%)")
+    label_cell(ws, 8, 1, f'="BTP Valore (YTM lordo MOT ~"&{pct_txt(valore_ytm, 2)}&"%)"')
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
         formula = f"={valore_ytm}*(1-{tasse})-{sc}"
@@ -814,14 +845,14 @@ def build_matrice(wb):
 
     # Riga 9: BTP Futura comprato OGGI sul MOT (YTM lordo BEY dal foglio 5, prezzo 86,15;
     # niente premio PIL per chi compra al secondario) - reale LINEARE: ytm*(1-tasse) - infl
-    label_cell(ws, 9, 1, "BTP Futura (YTM lordo MOT ~3,65%)")
+    label_cell(ws, 9, 1, f'="BTP Futura (YTM lordo MOT ~"&{pct_txt(futura_ytm, 2)}&"%)"')
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
         formula = f"={futura_ytm}*(1-{tasse})-{sc}"
         output_cell(ws, 9, col, formula, fmt="0.00%")
 
     # Riga 10: BTP nominale 5y - reale LINEARE: x*(1-tasse) - infl
-    label_cell(ws, 10, 1, "BTP nominale 5y (2,90% lordo)")
+    label_cell(ws, 10, 1, f'="BTP nominale 5y ("&{pct_txt(nominale_5y, 2)}&"% lordo)"')
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
         formula = f"={nominale_5y}*(1-{tasse})-{sc}"
@@ -829,18 +860,19 @@ def build_matrice(wb):
 
     # Riga 11: BTP nominale 10y - reale LINEARE: x*(1-tasse) - infl
     nominale_10y = "'1 - Parametri'!B34"
-    label_cell(ws, 11, 1, "BTP nominale 10y (3,45% lordo)")
+    label_cell(ws, 11, 1, f'="BTP nominale 10y ("&{pct_txt(nominale_10y, 2)}&"% lordo)"')
     for i, (sc, _) in enumerate(scenari):
         col = 2 + i
         formula = f"={nominale_10y}*(1-{tasse})-{sc}"
         output_cell(ws, 11, col, formula, fmt="0.00%")
 
     section_header(ws, 13, "Heatmap: VERDE = miglior rendimento REALE per scenario / ROSSO = peggior", span=SPAN)
-    note_cell(ws, 14, 1, "BTP Italia Si vince in scenari di inflazione media-alta perche' il tasso fisso e' REALE. "
-                          "BTP Italia classico in inflazione alta ha vantaggio capitale rivalutato. "
-                          "Valore e Futura: YTM da prezzo MOT (comprati OGGI, senza premi fedelta'/PIL), "
-                          "cedola nominale fissa → vincono solo con inflazione bassa. "
-                          "Nominali: vincono solo in disinflazione.", span=SPAN)
+    note_cell(ws, 14, 1, "NOTA DI METODO - heatmap per colonna: VERDE = miglior rendimento REALE dello scenario, "
+                          "ROSSO = peggiore. Il tasso del Si e' REALE (si somma al FOI), quindi il suo rendimento reale "
+                          "resta stabile tra gli scenari; gli strumenti a cedola nominale fissa perdono rendimento reale "
+                          "al crescere dell'inflazione. Valore e Futura sono valutati allo YTM da prezzo MOT "
+                          "(comprati OGGI, senza premi fedelta'/PIL). Il vincitore di ogni scenario dipende dai "
+                          "parametri correnti del foglio 1 - Parametri.", span=SPAN)
 
     # Conditional formatting: colorscale rosso-giallo-verde sulle 4 colonne dei valori (B6:E11)
     # Applica a OGNI colonna separatamente (= confronto strumenti per quello scenario)
@@ -889,14 +921,14 @@ def build_break_even(wb):
     section_header(ws, 4, "Avversari a cedola FISSA nominale (break-even basato su inflazione)", span=SPAN)
     table_header(ws, 5, 1, "Avversario")
     table_header(ws, 5, 2, "Rendimento lordo")
-    table_header(ws, 5, 3, "Rend. netto (1-12,5%)")
+    table_header(ws, 5, 3, "Rend. netto (dopo tasse)")
     table_header(ws, 5, 4, "Soglia infl. break-even (lorda)")
     table_header(ws, 5, 5, "Verdetto")
 
     # Break-even Si vs nominale: stessa tassazione 12,5% su entrambi i lati
     # => le tasse si ELIDONO: FOI_BE = nom_LORDO - (fisso_si + premio_si/durata)
     # (NON moltiplicare per (1-t): la soglia e' una differenza di rendimenti LORDI)
-    si_lordo_an = "('1 - Parametri'!B5+('1 - Parametri'!B7)/5)"
+    si_lordo_an = "('1 - Parametri'!B5+'1 - Parametri'!B7/'1 - Parametri'!B6)"
     tasse = "'1 - Parametri'!B8"
 
     # Valore/Futura: YTM lordo a prezzo MOT (formula BEY, fogli 4/5) — comprati OGGI al
@@ -907,8 +939,8 @@ def build_break_even(wb):
         (8, "BTP nominale 5y",   "='1 - Parametri'!B32"),
         (9, "BTP nominale 7y",   "='1 - Parametri'!B33"),
         (10,"BTP nominale 10y",  "='1 - Parametri'!B34"),
-        (11,"BTP Valore (YTM lordo MOT 98,65)",  "='4 - BTP Valore'!B32"),
-        (12,"BTP Futura (YTM lordo MOT 86,15)",  "='5 - BTP Futura'!B27"),
+        (11, f'="BTP Valore (YTM lordo MOT, prezzo "&{num_txt(P + "!B64")}&")"',  "='4 - BTP Valore'!B32"),
+        (12, f'="BTP Futura (YTM lordo MOT, prezzo "&{num_txt(P + "!B66")}&")"',  "='5 - BTP Futura'!B27"),
     ]
     for r, lbl, ref in avversari:
         label_cell(ws, r, 1, lbl)
@@ -918,7 +950,8 @@ def build_break_even(wb):
         # Col D: soglia LORDA (vedi commento sopra) - usata da verdetto IF e bar chart
         output_cell(ws, r, 4, f"=B{r}-{si_lordo_an}", fmt="0.00%")
         # Verdetto: ROUND*100&"%" per locale-safe (2 decimali per soglie precise)
-        output_cell(ws, r, 5, f'=IF(D{r}<=0,"Si vince SEMPRE",IF(D{r}>=0.045,"Si perde quasi sempre","Si vince se FOI > "&ROUND(D{r}*100,2)&"%"))', fmt="@")
+        # Soglia "quasi sempre" = scenario FOI massimo (B40), non hardcoded
+        output_cell(ws, r, 5, f'=IF(D{r}<=0,"Si vince SEMPRE",IF(D{r}>={P}!B40,"Si perde quasi sempre","Si vince se FOI > "&SUBSTITUTE(ROUND(D{r}*100,2)&"",".",",")&"%"))', fmt="@")
 
     # BTP Italia classico: confronto diverso (rivaluta capitale, no break-even semplice)
     # Confronto a parita' di inflazione su base REALE NETTA: entrambi indicizzati FOI,
@@ -930,7 +963,7 @@ def build_break_even(wb):
     table_header(ws, 15, 4, "Vantaggio Sì (pp)")
     table_header(ws, 15, 5, "Verdetto")
 
-    si_reale_netto = "=('1 - Parametri'!B5+'1 - Parametri'!B7/5)*(1-'1 - Parametri'!B8)"
+    si_reale_netto = "=('1 - Parametri'!B5+'1 - Parametri'!B7/'1 - Parametri'!B6)*(1-'1 - Parametri'!B8)"
 
     label_cell(ws, 16, 1, "BTP Italia classico mar 2028 (YTM REALE da prezzo MOT)")
     output_cell(ws, 16, 2, "='1 - Parametri'!B50*(1-'1 - Parametri'!B8)", fmt="0.00%")
@@ -950,15 +983,12 @@ def build_break_even(wb):
     output_cell(ws, 18, 4, "=C18-B18", fmt="0.00%")
     output_cell(ws, 18, 5, '=IF(D18>=0,"Sì vince (vantaggio "&ROUND(D18*100,2)&"pp)","Classico vince (gap "&ROUND(-D18*100,2)&"pp)")', fmt="@")
 
-    note_cell(ws, 19, 1, "ATTENZIONE: usato YTM REALE EFFETTIVO calcolato dal prezzo MOT (non cedola del prospetto). "
-                          "Se sul secondario il classico quota SOPRA par, il YTM reale si abbassa, specie per scadenze "
-                          "brevi. Esempio coi prezzi uff. 09/06/2026: mar 2028 a 101,97 → YTM reale ~0,9%; giu 2030 a "
-                          "101,92 → ~1,1%. Vai al foglio Parametri righe 46-56 per modificare i prezzi MOT.", span=SPAN)
+    pb46, pb48, pb50, pb52 = f"{P}!B46", f"{P}!B48", f"{P}!B50", f"{P}!B52"
+    note_cell(ws, 19, 1, f'="ATTENZIONE: usato YTM REALE EFFETTIVO calcolato dal prezzo MOT (non cedola del prospetto). Se sul secondario il classico quota SOPRA par, il YTM reale si abbassa, specie per scadenze brevi. Coi prezzi MOT correnti: mar 2028 a "&{num_txt(pb46)}&" → YTM reale ~"&{pct_txt(pb50, 2)}&"%; giu 2030 a "&{num_txt(pb48)}&" → ~"&{pct_txt(pb52, 2)}&"%. Vai al foglio Parametri righe 46-56 per modificare i prezzi MOT."', span=SPAN)
 
-    note_cell(ws, 21, 1, "BTP Futura comprato OGGI sul MOT a 86,15 (forte sconto sotto par): YTM lordo ~3,65% "
-                          "nonostante le cedole step-up basse (0,75/1,35/1,70). Soglia break-even FOI ~2,3%: "
-                          "sotto, il Futura vince; sopra, vince il Sì. Il doppio premio PIL NON spetta a chi compra "
-                          "sul MOT (solo sottoscrittori originali nov 2021).", span=SPAN)
+    pb66, pb22, pb23, pb24 = f"{P}!B66", f"{P}!B22", f"{P}!B23", f"{P}!B24"
+    fut_ytm = "'5 - BTP Futura'!B27"
+    note_cell(ws, 21, 1, f'="BTP Futura comprato OGGI sul MOT a "&{num_txt(pb66)}&": YTM lordo ~"&{pct_txt(fut_ytm, 2)}&"% con cedole step-up "&{pct_txt(pb22, 2)}&"/"&{pct_txt(pb23, 2)}&"/"&{pct_txt(pb24, 2)}&"%. Soglia break-even FOI ~"&{pct_txt("D12", 2)}&"% (col. D): sotto la soglia vince il Futura, sopra vince il Si; se la soglia e\' negativa il Si vince sempre. Il doppio premio PIL NON spetta a chi compra sul MOT (solo sottoscrittori originali nov 2021)."', span=SPAN)
 
     # Bar chart orizzontale: soglia inflazione break-even per ogni avversario fisso-nominale
     add_bar_chart(
@@ -1093,7 +1123,7 @@ def build_calcolatore(wb):
     # - Nominali (Valore, 5y, 10y): reale netto = nominale_netto - infl (NO drag: cedola non indicizzata)
     # - Valore: YTM lordo a prezzo MOT (foglio 4 B32) — chi compra OGGI non ha premio fedelta'
     strumenti = [
-        (12, "BTP Italia Si",    "=('1 - Parametri'!B5+'1 - Parametri'!B7/5)*(1-{tasse})-{tasse}*{infl_user}", 5),
+        (12, "BTP Italia Si",    "=('1 - Parametri'!B5+'1 - Parametri'!B7/'1 - Parametri'!B6)*(1-{tasse})-{tasse}*{infl_user}", 5),
         (13, "BTP Italia clas. (YTM MOT)", "='1 - Parametri'!B56*(1-{tasse})-{tasse}*{infl_user}", 5),
         (14, "BTP Valore (YTM MOT)", "='4 - BTP Valore'!B32*(1-{tasse})-{infl_user}", 6),
         (15, "BTP nominale 5y",  "='1 - Parametri'!B32*(1-{tasse})-{infl_user}", 5),
@@ -1144,21 +1174,23 @@ def main(out_path: str | None = None):
     sheets_info = [
         ("1 - Parametri",        "Input centralizzati (modifica QUI dopo annuncio MEF 12 giu)"),
         ("2 - BTP Italia Si",     "Rendimento Si in 4 scenari inflazione FOI"),
-        ("3 - BTP Italia classico","Capitale rivalutato + cedola reale 1,6% (giu 2030)"),
-        ("4 - BTP Valore",        "Step-up 2,60/3,20/3,80 + YTM a prezzo MOT 98,65"),
-        ("5 - BTP Futura",        "Storico 4a emissione + YTM a prezzo MOT 86,15"),
+        ("3 - BTP Italia classico", f'="Capitale rivalutato + cedola reale "&{pct_txt(P + "!B12")}&"% (giu 2030)"'),
+        ("4 - BTP Valore",        f'="Step-up "&{pct_txt(P + "!B15", 2)}&"/"&{pct_txt(P + "!B16", 2)}&"/"&{pct_txt(P + "!B17", 2)}&" + YTM a prezzo MOT "&{num_txt(P + "!B64")}'),
+        ("5 - BTP Futura",        f'="Storico 4a emissione + YTM a prezzo MOT "&{num_txt(P + "!B66")}'),
         ("6 - BTP nominali",      "Curva 2y/5y/10y rendimenti fissi"),
         ("7 - MATRICE COMPARATIVA","6 strumenti x 4 scenari (rendimenti REALI netti)"),
         ("8 - Break-even",        "Soglia inflazione per ogni avversario"),
         ("9 - 4 profili FIRE",    "Allocazione consigliata"),
         ("10 - Calcolatore",      "Tuo profilo personale - raccomandazione automatica"),
     ]
+    # Fonti con numeri parametrici = FORMULE (bullet incluso nel testo della formula);
+    # build_cover le scrive as-is, le stringhe semplici ricevono il bullet "• ".
     sources = [
         "MEF Dipartimento del Tesoro - Annuncio BTP Italia Si dal 15 al 19 giugno 2026",
-        "MEF - BTP Italia marzo 2028 (IT0005532723, scad. 14/03/2028) tasso reale 2,0%; giugno 2030 (IT0005497000) tasso reale 1,6%",
-        "MEF - BTP Valore marzo 2026 (IT0005696338) step-up DEFINITIVI 2,60/3,20/3,80% + premio 0,8%, scadenza 10 mar 2032",
-        "MEF - BTP Futura 4a emissione nov 2021 (IT0005466351), 12 anni step-up DEFINITIVI 0,75/1,35/1,70% + doppio premio PIL (solo sottoscrittori originali), scadenza 16 nov 2033",
-        "Borsa Italiana MOT - prezzi ufficiali 09/06/2026: mar 2028 101,97; giu 2030 101,92; Valore 98,65; Futura 86,15",
+        f'="• MEF - BTP Italia marzo 2028 (IT0005532723, scad. 14/03/2028) tasso reale "&{pct_txt(P + "!B11")}&"%; giugno 2030 (IT0005497000) tasso reale "&{pct_txt(P + "!B12")}&"%"',
+        f'="• MEF - BTP Valore marzo 2026 (IT0005696338) step-up DEFINITIVI "&{pct_txt(P + "!B15", 2)}&"/"&{pct_txt(P + "!B16", 2)}&"/"&{pct_txt(P + "!B17", 2)}&"% + premio "&{pct_txt(P + "!B18")}&"%, scadenza 10 mar 2032"',
+        f'="• MEF - BTP Futura 4a emissione nov 2021 (IT0005466351), "&{P}!B27&" anni step-up DEFINITIVI "&{pct_txt(P + "!B22", 2)}&"/"&{pct_txt(P + "!B23", 2)}&"/"&{pct_txt(P + "!B24", 2)}&"% + doppio premio PIL (solo sottoscrittori originali), scadenza 16 nov 2033"',
+        f'="• Borsa Italiana MOT - prezzi ufficiali correnti (foglio 1 - Parametri): mar 2028 "&{num_txt(P + "!B46")}&"; giu 2030 "&{num_txt(P + "!B48")}&"; Valore "&{num_txt(P + "!B64")}&"; Futura "&{num_txt(P + "!B66")}',
         "MEF Tesoro - Calendario aste BTP nominali maggio 2026 (asta 13 e 28 maggio)",
         "Banca d'Italia - Risultati aste BTP nominali 2026 (rendimenti curva 2y-10y)",
         "ISTAT - Indice FOI per famiglie operai e impiegati (escluso tabacchi) - meccanismo BTP Italia",

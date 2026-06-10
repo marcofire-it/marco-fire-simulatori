@@ -165,7 +165,10 @@ def build_cover(wb, title_text, sheets_info, sources, github_url="github.com/mar
     base2 = base + 6
     section_h1(ws, base2, 1, "Fonti dati")
     for i, s in enumerate(sources, start=base2 + 1):
-        ws.cell(row=i, column=1, value=f"• {s}").font = FONT_VALUE
+        # Fonte parametrica = FORMULA: scrivila as-is (deve includere gia' il
+        # bullet "• " nel testo); stringa semplice = bullet aggiunto qui.
+        val = s if isinstance(s, str) and s.startswith("=") else f"• {s}"
+        ws.cell(row=i, column=1, value=val).font = FONT_VALUE
 
     base3 = base2 + 1 + len(sources) + 1
     ws.cell(row=base3, column=1, value=f"Aggiornamenti: {github_url}").font = FONT_NOTE
