@@ -1167,10 +1167,21 @@ def build_calcolatore(wb):
 
 
 def build_flusso_cedolare(wb):
-    """Foglio 11 - Flusso cedolare: calendario semestrale cedole nette + premio."""
+    """Foglio 11 - Flusso cedolare: calendario semestrale cedole nette + premio + IRR (XIRR)."""
+    import datetime as _dt
+    from _excel_helpers import FONT_VALUE, BORDER, ALIGN_RIGHT
+
     ws = wb.create_sheet("11 - Flusso cedolare")
-    set_col_widths(ws, [12, 14, 16, 16, 16, 16])
-    SPAN = 6
+    set_col_widths(ws, [14, 13, 15, 14, 15, 16, 16])
+    SPAN = 7
+
+    def date_cell(row, col, d):
+        c = ws.cell(row=row, column=col, value=d)
+        c.font = FONT_VALUE
+        c.border = BORDER
+        c.alignment = ALIGN_RIGHT
+        c.number_format = "mmm aaaa"
+        return c
 
     title_row(ws, 1, "BTP Italia Si - flusso cedolare semestrale (quanto incassi, quando)", span=SPAN)
     disclaimer_row(ws, 2, span=SPAN)
@@ -1186,48 +1197,74 @@ def build_flusso_cedolare(wb):
     output_cell(ws, 8, 2, "='1 - Parametri'!B43", fmt="#,##0")
     label_cell(ws, 9, 1, "Inflazione FOI media (scenario)")
     input_cell(ws, 9, 2, 0.02, fmt="0.0%")
-    note_cell(ws, 9, 3, "GIALLO = modificabile: 0,01 / 0,02 / 0,03 / 0,045", span=4)
+    note_cell(ws, 9, 3, "GIALLO = modificabile: 0,01 / 0,02 / 0,03 / 0,045", span=5)
 
     section_header(ws, 11, "Calendario cedole semestrali nette (convenzione lineare, FOI media costante)", span=SPAN)
     for col, h in enumerate(["Stacco", "Data", "Cedola lorda", "Imposta",
-                             "Cedola netta", "Cumulato netto"], start=1):
+                             "Cedola netta", "Cumulato netto", "Flusso di cassa"], start=1):
         table_header(ws, 12, col, h)
-    date_labels = ["dic 2026", "giu 2027", "dic 2027", "giu 2028", "dic 2028",
-                   "giu 2029", "dic 2029", "giu 2030", "dic 2030", "giu 2031"]
-    for i, dl in enumerate(date_labels, start=1):
+    # cedole: dic 2026 ... giu 2031 (10 stacchi, 15 del mese convenzionale)
+    coupon_dates = []
+    y, m = 2026, 12
+    for _ in range(10):
+        coupon_dates.append(_dt.date(y, m, 15))
+        m += 6
+        if m > 12:
+            m -= 12
+            y += 1
+    for i, d in enumerate(coupon_dates, start=1):
         r = 12 + i  # 13..22
         label_cell(ws, r, 1, f"{i}/10")
-        label_cell(ws, r, 2, dl)
+        date_cell(r, 2, d)
         output_cell(ws, r, 3, "=($B$5+$B$9)/2*$B$8", fmt="#,##0.00")
         output_cell(ws, r, 4, f"=C{r}*$B$7", fmt="#,##0.00")
         output_cell(ws, r, 5, f"=C{r}-D{r}", fmt="#,##0.00")
         output_cell(ws, r, 6, f"=E{r}" if i == 1 else f"=F{r-1}+E{r}", fmt="#,##0.00")
+        output_cell(ws, r, 7, f"=E{r}", fmt="#,##0.00")
 
-    label_cell(ws, 24, 1, "Premio")
-    label_cell(ws, 24, 2, "giu 2031")
-    output_cell(ws, 24, 3, "=$B$8*$B$6", fmt="#,##0.00")
-    output_cell(ws, 24, 4, "=C24*$B$7", fmt="#,##0.00")
-    output_cell(ws, 24, 5, "=C24-D24", fmt="#,##0.00")
-    output_cell(ws, 24, 6, "=F22+E24", fmt="#,##0.00")
-    label_cell(ws, 25, 1, "TOTALE NETTO 5 ANNI (cedole + premio)")
-    output_cell(ws, 25, 6, "=F24", fmt="#,##0.00")
+    label_cell(ws, 23, 1, "Premio")
+    date_cell(23, 2, _dt.date(2031, 6, 15))
+    output_cell(ws, 23, 3, "=$B$8*$B$6", fmt="#,##0.00")
+    output_cell(ws, 23, 4, "=C23*$B$7", fmt="#,##0.00")
+    output_cell(ws, 23, 5, "=C23-D23", fmt="#,##0.00")
+    output_cell(ws, 23, 6, "=F22+E23", fmt="#,##0.00")
+    output_cell(ws, 23, 7, "=E23", fmt="#,##0.00")
+    label_cell(ws, 24, 1, "Acquisto")
+    date_cell(24, 2, _dt.date(2026, 6, 19))
+    output_cell(ws, 24, 7, "=-$B$8", fmt="#,##0.00")
+    label_cell(ws, 25, 1, "Rimborso")
+    date_cell(25, 2, _dt.date(2031, 6, 15))
+    output_cell(ws, 25, 7, "=$B$8", fmt="#,##0.00")
+    label_cell(ws, 26, 1, "TOTALE NETTO 5 ANNI (cedole + premio)")
+    output_cell(ws, 26, 6, "=F23", fmt="#,##0.00")
 
-    section_header(ws, 27, "Note metodologiche", span=SPAN)
-    note_cell(ws, 28, 1, "Date indicative: godimento giugno 2026, cedole semestrali dicembre/giugno. "
-                          "Il FOI media e' un'ipotesi di scenario: le cedole effettive varieranno semestre "
-                          "per semestre con l'inflazione FOI rilevata da ISTAT. Il premio fedelta' spetta "
-                          "solo a chi sottoscrive in collocamento e tiene fino a scadenza.", span=SPAN)
+    section_header(ws, 28, "IRR dai flussi di cassa", span=SPAN)
+    label_cell(ws, 29, 1, "IRR nominale netto EFFETTIVO (XIRR composto sui flussi)")
+    output_cell(ws, 29, 6, "=XIRR(G13:G25,B13:B25)", fmt="0.00%")
+    label_cell(ws, 30, 1, "IRR nominale netto LINEARE (convenzione fogli 2-7)")
+    output_cell(ws, 30, 6, "=ROUND(($B$5+$B$6/'1 - Parametri'!B6+$B$9)*(1-$B$7),6)", fmt="0.00%")
+    label_cell(ws, 31, 1, "IRR REALE netto effettivo (XIRR - FOI media)")
+    output_cell(ws, 31, 6, "=F29-$B$9", fmt="0.00%")
+
+    section_header(ws, 33, "Note metodologiche", span=SPAN)
+    note_cell(ws, 34, 1, "Date indicative: godimento giugno 2026, cedole semestrali dicembre/giugno (15 del mese "
+                          "convenzionale; acquisto = chiusura collocamento 19/06/2026). Il FOI media e' un'ipotesi "
+                          "di scenario: le cedole effettive varieranno semestre per semestre con l'inflazione FOI "
+                          "rilevata da ISTAT. Il premio fedelta' spetta solo a chi sottoscrive in collocamento e "
+                          "tiene fino a scadenza. XIRR = rendimento composto effettivo sui flussi datati; differisce "
+                          "di pochi centesimi dall'IRR lineare divulgativo usato negli altri fogli (che non compone "
+                          "i reinvestimenti).", span=SPAN)
 
     ch = add_bar_chart(
         ws,
         title="Cedole nette semestrali + premio finale",
-        data_range=(5, 12, 5, 24),  # E12:E24 (header in 12)
-        cat_range=(2, 13, 2, 24),   # B13:B24 (date)
-        anchor="H4",
+        data_range=(5, 12, 5, 23),  # E12:E23 (header in 12, cedole + premio, senza gap)
+        cat_range=(1, 13, 1, 23),   # A13:A23 (1/10..10/10, Premio)
+        anchor="I4",
         y_title="EUR netti",
         y_fmt="#,##0",  # importi in EUR, non percentuali
     )
-    ch.legend = None      # 12 voci di legenda (una per data) = rumore
+    ch.legend = None      # niente legenda per-categoria
     ch.varyColors = False  # un solo colore per la serie
     return ws
 
