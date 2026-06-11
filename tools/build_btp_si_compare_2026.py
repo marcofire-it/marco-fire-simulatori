@@ -1166,6 +1166,72 @@ def build_calcolatore(wb):
     return ws
 
 
+def build_flusso_cedolare(wb):
+    """Foglio 11 - Flusso cedolare: calendario semestrale cedole nette + premio."""
+    ws = wb.create_sheet("11 - Flusso cedolare")
+    set_col_widths(ws, [12, 14, 16, 16, 16, 16])
+    SPAN = 6
+
+    title_row(ws, 1, "BTP Italia Si - flusso cedolare semestrale (quanto incassi, quando)", span=SPAN)
+    disclaimer_row(ws, 2, span=SPAN)
+
+    section_header(ws, 4, "Input (tasso/premio/tassazione dal foglio Parametri; FOI modificabile QUI)", span=SPAN)
+    label_cell(ws, 5, 1, "Tasso fisso reale annuo")
+    output_cell(ws, 5, 2, "='1 - Parametri'!B5", fmt="0.00%")
+    label_cell(ws, 6, 1, "Premio fedelta' finale")
+    output_cell(ws, 6, 2, "='1 - Parametri'!B7", fmt="0.00%")
+    label_cell(ws, 7, 1, "Tassazione")
+    output_cell(ws, 7, 2, "='1 - Parametri'!B8", fmt="0.0%")
+    label_cell(ws, 8, 1, "Capitale investito (EUR)")
+    output_cell(ws, 8, 2, "='1 - Parametri'!B43", fmt="#,##0")
+    label_cell(ws, 9, 1, "Inflazione FOI media (scenario)")
+    input_cell(ws, 9, 2, 0.02, fmt="0.0%")
+    note_cell(ws, 9, 3, "GIALLO = modificabile: 0,01 / 0,02 / 0,03 / 0,045", span=4)
+
+    section_header(ws, 11, "Calendario cedole semestrali nette (convenzione lineare, FOI media costante)", span=SPAN)
+    for col, h in enumerate(["Stacco", "Data", "Cedola lorda", "Imposta",
+                             "Cedola netta", "Cumulato netto"], start=1):
+        table_header(ws, 12, col, h)
+    date_labels = ["dic 2026", "giu 2027", "dic 2027", "giu 2028", "dic 2028",
+                   "giu 2029", "dic 2029", "giu 2030", "dic 2030", "giu 2031"]
+    for i, dl in enumerate(date_labels, start=1):
+        r = 12 + i  # 13..22
+        label_cell(ws, r, 1, f"{i}/10")
+        label_cell(ws, r, 2, dl)
+        output_cell(ws, r, 3, "=($B$5+$B$9)/2*$B$8", fmt="#,##0.00")
+        output_cell(ws, r, 4, f"=C{r}*$B$7", fmt="#,##0.00")
+        output_cell(ws, r, 5, f"=C{r}-D{r}", fmt="#,##0.00")
+        output_cell(ws, r, 6, f"=E{r}" if i == 1 else f"=F{r-1}+E{r}", fmt="#,##0.00")
+
+    label_cell(ws, 24, 1, "Premio")
+    label_cell(ws, 24, 2, "giu 2031")
+    output_cell(ws, 24, 3, "=$B$8*$B$6", fmt="#,##0.00")
+    output_cell(ws, 24, 4, "=C24*$B$7", fmt="#,##0.00")
+    output_cell(ws, 24, 5, "=C24-D24", fmt="#,##0.00")
+    output_cell(ws, 24, 6, "=F22+E24", fmt="#,##0.00")
+    label_cell(ws, 25, 1, "TOTALE NETTO 5 ANNI (cedole + premio)")
+    output_cell(ws, 25, 6, "=F24", fmt="#,##0.00")
+
+    section_header(ws, 27, "Note metodologiche", span=SPAN)
+    note_cell(ws, 28, 1, "Date indicative: godimento giugno 2026, cedole semestrali dicembre/giugno. "
+                          "Il FOI media e' un'ipotesi di scenario: le cedole effettive varieranno semestre "
+                          "per semestre con l'inflazione FOI rilevata da ISTAT. Il premio fedelta' spetta "
+                          "solo a chi sottoscrive in collocamento e tiene fino a scadenza.", span=SPAN)
+
+    ch = add_bar_chart(
+        ws,
+        title="Cedole nette semestrali + premio finale",
+        data_range=(5, 12, 5, 24),  # E12:E24 (header in 12)
+        cat_range=(2, 13, 2, 24),   # B13:B24 (date)
+        anchor="H4",
+        y_title="EUR netti",
+        y_fmt="#,##0",  # importi in EUR, non percentuali
+    )
+    ch.legend = None      # 12 voci di legenda (una per data) = rumore
+    ch.varyColors = False  # un solo colore per la serie
+    return ws
+
+
 def main(out_path: str | None = None):
     wb = Workbook()
 
@@ -1182,6 +1248,7 @@ def main(out_path: str | None = None):
         ("8 - Break-even",        "Soglia inflazione per ogni avversario"),
         ("9 - 4 profili FIRE",    "Allocazione consigliata"),
         ("10 - Calcolatore",      "Tuo profilo personale - raccomandazione automatica"),
+        ("11 - Flusso cedolare",  "Calendario semestrale: quanto incassi e quando, cedola per cedola"),
     ]
     # Fonti con numeri parametrici = FORMULE (bullet incluso nel testo della formula);
     # build_cover le scrive as-is, le stringhe semplici ricevono il bullet "• ".
@@ -1210,6 +1277,7 @@ def main(out_path: str | None = None):
     build_break_even(wb)
     build_profili(wb)
     build_calcolatore(wb)
+    build_flusso_cedolare(wb)
 
     # Output: di default nel repo STAGING private (pattern release_excel.py:
     # staging -> public solo al go-live via tools/release_excel.py --slug btp_si_compare).
