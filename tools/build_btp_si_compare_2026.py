@@ -25,7 +25,8 @@ THIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(THIS_DIR))
 
 from openpyxl import Workbook
-from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.chart import BarChart, LineChart, ScatterChart, Series, Reference
+from openpyxl.chart.label import DataLabelList
 from openpyxl.chart.axis import ChartLines
 from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.chart.layout import Layout, ManualLayout
@@ -178,6 +179,127 @@ def add_line_chart(ws, title, data_range, cat_range, anchor, y_title="", x_title
     return ch
 
 
+def add_breakeven_chart(ws, anchor, x_ref, y_old_ref, y_si_ref, cross_x_ref, cross_y_ref):
+    """Grafico break-even custom (ScatterChart XY): due rette - rendimento reale del
+    vecchio (che scende col prezzo) e del nuovo Si (costante) - che si incrociano al
+    prezzo di indifferenza, evidenziato da un marker a rombo. Asse X numerico reale,
+    cosi' l'incrocio e' geometricamente corretto."""
+    ch = ScatterChart()
+    ch.title = "Break-even: quando conviene lo switch"
+    ch.style = 13
+    ch.scatterStyle = "lineMarker"
+    ch.x_axis.title = "Prezzo del vecchio (su 100)"
+    ch.y_axis.title = "Rendimento reale annuo"
+
+    # Linee pulite (nessun marker sui punti dati: le rette sono lineari, i pallini
+    # su ogni prezzo fanno solo rumore visivo).
+    s_old = Series(y_old_ref, x_ref, title="Vecchio (rend. reale)")
+    s_old.graphicalProperties.line.solidFill = "E0A458"   # ambra
+    s_old.graphicalProperties.line.width = 19050          # ~1,5pt, tratto normale
+    s_old.smooth = False
+    s_old.marker.symbol = "none"
+
+    s_si = Series(y_si_ref, x_ref, title="Nuovo Si (rend. reale)")
+    s_si.graphicalProperties.line.solidFill = "10B981"    # emerald
+    s_si.graphicalProperties.line.width = 19050
+    s_si.smooth = False
+    s_si.marker.symbol = "none"
+
+    # Punto di incrocio = prezzo di indifferenza: SOLO marker (rombo rosso) + label.
+    s_cross = Series(cross_y_ref, cross_x_ref, title="Prezzo di indifferenza")
+    s_cross.graphicalProperties.line.noFill = True
+    s_cross.marker.symbol = "diamond"; s_cross.marker.size = 12
+    s_cross.marker.graphicalProperties.solidFill = "EF4444"  # rosso evidenza
+    # Label sul punto: mostra il NUMERO preso DALLA CELLA B24 (prezzo di indifferenza),
+    # via "Valore dalle celle" (estensione c15:datalabelsRange iniettata dopo il save:
+    # openpyxl non la espone). Cosi' il numero e' DINAMICO e si aggiorna con gli input.
+    s_cross.dLbls = DataLabelList()
+    s_cross.dLbls.showSerName = False
+    s_cross.dLbls.showVal = False
+    s_cross.dLbls.showCatName = False
+    s_cross.dLbls.showLegendKey = False
+    s_cross.dLbls.position = "t"
+
+    ch.series.append(s_old)
+    ch.series.append(s_si)
+    ch.series.append(s_cross)
+
+    # Layout/margini collaudati come gli altri grafici (evita titolo dentro il plot e
+    # Y-title sovrapposto ai tick). Spazio a destra per la legenda.
+    _style_axes(ch, y_fmt="0.0%", plot_x=0.16, plot_y=0.18, plot_w=0.64, plot_h=0.60)
+    # Griglia ancora piu' tenue (richiesta utente: piu' leggera/opaca) + niente verticali
+    gp = GraphicalProperties()
+    gp.line = LineProperties(solidFill="ECECEC", w=3000)
+    gl = ChartLines(); gl.spPr = gp
+    ch.y_axis.majorGridlines = gl
+    ch.x_axis.majorGridlines = None
+
+    ch.width = 21
+    ch.height = 12
+    ws.add_chart(ch, anchor)
+    return ch
+
+
+def inject_indiff_label(xlsx_path, series_title="Prezzo di indifferenza"):
+    """Scrive sul punto di indifferenza una data-label di TESTO col valore numerico del
+    prezzo di indifferenza (cella B24, ricalcolato dai parametri). Statico ma PORTABILE
+    (Excel/LibreOffice/Sheets): il campo "Valore dalle celle" (CELLRANGE) in Excel resta
+    spesso letterale, quindi scriviamo direttamente il numero. Patch XML post-save
+    (openpyxl usa il namespace chart come DEFAULT -> tag senza prefisso)."""
+    import zipfile, os
+    import openpyxl as _ox
+    xlsx_path = str(xlsx_path)
+    # prezzo di indifferenza = replica della formula di B24 (foglio Switch)
+    _wb = _ox.load_workbook(xlsx_path)
+    _pm = _wb["1 - Parametri"]; _sw = _wb["12 - Switch"]
+    _si = (_pm["B5"].value or 0.016) + (_pm["B7"].value or 0.006) / (_pm["B6"].value or 5)
+    _old = _sw["B7"].value or 0.0185; _anni = _sw["B8"].value or 6
+    _price = (_old * 100 + 100 / _anni) / (_si + 1 / _anni)
+    _wb.close()
+    value_text = ("≈ " + f"{_price:.1f}").replace(".", ",")
+    zin = zipfile.ZipFile(xlsx_path, "r")
+    target, xml = None, None
+    for n in zin.namelist():
+        if n.startswith("xl/charts/chart") and n.endswith(".xml"):
+            data = zin.read(n).decode("utf-8")
+            if series_title in data:
+                target, xml = n, data
+                break
+    if target is None:
+        zin.close()
+        raise RuntimeError(f"grafico con serie '{series_title}' non trovato")
+
+    tpos = xml.index(series_title)
+    ser_start = xml.rfind("<ser>", 0, tpos)
+    ser_end = xml.index("</ser>", tpos)
+    if ser_start == -1 or "<dLbls>" not in xml[ser_start:ser_end]:
+        zin.close()
+        raise RuntimeError("blocco <ser>/<dLbls> della serie crossing non trovato")
+    head, ser, tail = xml[:ser_start], xml[ser_start:ser_end], xml[ser_end:]
+
+    show0 = ('<showLegendKey val="0"/><showVal val="0"/><showCatName val="0"/>'
+             '<showSerName val="0"/><showPercent val="0"/><showBubbleSize val="0"/>')
+    # Label del punto: testo statico col NUMERO (es. "≈ 100,7"), portabile su ogni viewer.
+    run = ('<a:r><a:rPr lang="it-IT" b="1" sz="1150"><a:solidFill><a:srgbClr val="C00000"/>'
+           '</a:solidFill></a:rPr><a:t>' + value_text + '</a:t></a:r>')
+    new_dlbls = ('<dLbls><dLbl><idx val="0"/>'
+                 '<tx><rich><a:bodyPr/><a:lstStyle/><a:p>' + run + '</a:p></rich></tx>'
+                 '<dLblPos val="t"/>' + show0 + '</dLbl>' + show0 + '</dLbls>')
+
+    d0 = ser.index("<dLbls>"); d1 = ser.index("</dLbls>") + len("</dLbls>")
+    ser = ser[:d0] + new_dlbls + ser[d1:]   # sostituisce dLbls con label di testo
+    new_xml = head + ser + tail
+
+    tmp = xlsx_path + ".tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            payload = new_xml.encode("utf-8") if item.filename == target else zin.read(item.filename)
+            zout.writestr(item, payload)
+    zin.close()
+    os.replace(tmp, xlsx_path)
+    return value_text
+
+
 def build_params(wb):
     """Foglio 1 - Parametri centralizzati. UNICO posto da modificare il 12 giu."""
     ws = wb.create_sheet("1 - Parametri")
@@ -288,11 +410,11 @@ def build_params(wb):
     # YTM reale effettivo (bond equivalent yield approssimato)
     # YTM = (cedola + (100 - prezzo)/N) / ((100 + prezzo)/2)
     label_cell(ws, 50, 1, "YTM reale mar 2028 (per chi compra al MOT oggi)")
-    output_cell(ws, 50, 2, "=(B11*100+(100-B46)/D46)/((100+B46)/2)", fmt="0.00%")
+    output_cell(ws, 50, 2, "=(B11*100+(100-B46)/D46)/((100+B46)/2)+B76", fmt="0.00%")
     note_cell(ws, 51, 1, f'="Formula bond equiv. yield. Cedola "&{pct_txt("B11")}&"% sul prospetto, ma a prezzo "&{num_txt("B46")}&" con "&{num_txt("D46", 1)}&"y residui → YTM reale ~"&{pct_txt("B50", 2)}&"%."', span=SPAN)
 
     label_cell(ws, 52, 1, "YTM reale giu 2030 (per chi compra al MOT oggi)")
-    output_cell(ws, 52, 2, "=(B12*100+(100-B48)/D48)/((100+B48)/2)", fmt="0.00%")
+    output_cell(ws, 52, 2, "=(B12*100+(100-B48)/D48)/((100+B48)/2)+B77", fmt="0.00%")
     note_cell(ws, 53, 1, f'="Cedola "&{pct_txt("B12")}&"% sul prospetto, a prezzo "&{num_txt("B48")}&" con "&{num_txt("D48", 1)}&"y residui → YTM reale ~"&{pct_txt("B52", 2)}&"%."', span=SPAN)
 
     section_header(ws, 55, "YTM reale medio classico per il confronto matrice (media ponderata 2 ISIN)", span=SPAN)
@@ -338,6 +460,16 @@ def build_params(wb):
         label_cell(ws, r, 1, lbl)
         input_cell(ws, r, 2, isin, fmt="@")
         note_cell(ws, r, 4, note)
+
+    # ==== Calibrazione IRR esatto (tools/compute_ytm_exact.py + sync) ====
+    section_header(ws, 75, "Calibrazione IRR esatto (auto: compute_ytm_exact.py + sync, NON modificare a mano)", span=SPAN)
+    for r, lbl in [(76, "Offset IRR mar 2028 (esatto - BEY)"),
+                   (77, "Offset IRR giu 2030 (esatto - BEY)"),
+                   (78, "Offset IRR BTP Valore (esatto - BEY)"),
+                   (79, "Offset IRR BTP Futura (esatto - BEY)")]:
+        label_cell(ws, r, 1, lbl)
+        input_cell(ws, r, 2, 0.0, fmt="0.0000%")
+    note_cell(ws, 80, 1, "Le formule YTM nei fogli sono bond-equivalent-yield + offset: ai prezzi correnti coincidono con l'IRR esatto da cashflow datati (stessi numeri di video e simulatore web).", span=SPAN)
 
     return ws
 
@@ -574,7 +706,7 @@ def build_btp_valore(wb):
     output_cell(ws, 31, 2, "=(B5*MAX(0,B30-4)+B6*MIN(2,MAX(0,B30-2))+B7*MIN(2,B30))/B30", fmt="0.00%")
     label_cell(ws, 32, 1, "YTM lordo (formula bond equivalent yield)")
     # BEY: (cedola_media + (100-P)/N) / ((100+P)/2) — stessa convenzione del foglio Parametri B50/B52
-    output_cell(ws, 32, 2, "=(B31*100+(100-B29)/B30)/((100+B29)/2)", fmt="0.00%")
+    output_cell(ws, 32, 2, "=(B31*100+(100-B29)/B30)/((100+B29)/2)+'1 - Parametri'!B78", fmt="0.00%")
     label_cell(ws, 33, 1, f'="YTM netto (tassazione "&{pct_txt("B10")}&"%)"')
     output_cell(ws, 33, 2, "=B32*(1-B10)", fmt="0.00%")
     note_cell(ws, 34, 1, f'="Prezzo MOT corrente "&{num_txt("B29")}&": YTM lordo ~"&{pct_txt("B32", 2)}&"% vs media cedole residue ~"&{pct_txt("B31", 2)}&"%. Se il prezzo e\' sotto la pari il YTM supera la media cedole (sconto), se sopra la riduce. ATTENZIONE: il premio fedelta\' "&{pct_txt("B8")}&"% NON spetta a chi compra sul MOT (solo sottoscrittori in collocamento), percio\' il YTM qui sopra NON lo include."', span=SPAN)
@@ -679,7 +811,7 @@ def build_btp_futura(wb):
     output_cell(ws, 26, 2, "=(B5*MAX(0,B25-8)+B6*MIN(4,MAX(0,B25-4))+B7*MIN(4,B25))/B25", fmt="0.00%")
     label_cell(ws, 27, 1, "YTM lordo (formula bond equivalent yield)")
     # BEY: (cedola_media + (100-P)/N) / ((100+P)/2) — stessa convenzione del foglio Parametri B50/B52
-    output_cell(ws, 27, 2, "=(B26*100+(100-B24)/B25)/((100+B24)/2)", fmt="0.00%")
+    output_cell(ws, 27, 2, "=(B26*100+(100-B24)/B25)/((100+B24)/2)+'1 - Parametri'!B79", fmt="0.00%")
     label_cell(ws, 28, 1, f'="YTM netto (tassazione "&{pct_txt("B11")}&"%)"')
     output_cell(ws, 28, 2, "=B27*(1-B11)", fmt="0.00%")
     note_cell(ws, 29, 1, f'="Lo sconto/premio sul prezzo MOT corrente ("&{num_txt("B24")}&") si somma alle cedole: parte del rendimento arriva dal capital gain a scadenza (100 - "&{num_txt("B24")}&" su "&{num_txt("B25", 1)}&" anni). ATTENZIONE: il doppio premio PIL spetta SOLO ai sottoscrittori originali del nov 2021, NON a chi compra sul MOT — il YTM qui sopra correttamente lo esclude."', span=SPAN)
@@ -1269,6 +1401,85 @@ def build_flusso_cedolare(wb):
     return ws
 
 
+def build_switch(wb):
+    """Foglio 12 - Switch: conviene vendere un vecchio BTP Italia per il nuovo Si?
+    Confronto forward (rendimento reale annuo DA OGGI) vecchio (sul prezzo MOT) vs
+    Si comprato a 100, con prezzo di indifferenza e verdetto."""
+    ws = wb.create_sheet("12 - Switch")
+    set_col_widths(ws, [46, 16, 34])
+    SPAN = 3
+
+    title_row(ws, 1, "Switch: conviene vendere un vecchio BTP Italia per il nuovo Si?", span=SPAN)
+    disclaimer_row(ws, 2, span=SPAN)
+
+    section_header(ws, 4, "Il tuo vecchio BTP Italia (quello che valuti di vendere)", span=SPAN)
+    olds = [
+        ("Nominale posseduto (EUR)",            10000,  "#,##0"),
+        ("Prezzo MOT attuale (su 100)",         101.40, "0.00"),
+        ("Tasso reale del vecchio (% annuo)",   0.0185, "0.00%"),
+        ("Anni residui alla scadenza",          6,      "0"),
+    ]
+    for i, (lbl, val, fmt) in enumerate(olds, start=5):
+        label_cell(ws, i, 1, lbl)
+        input_cell(ws, i, 2, val, fmt=fmt)
+
+    section_header(ws, 10, "Il nuovo BTP Italia Si (in emissione, a 100)", span=SPAN)
+    label_cell(ws, 11, 1, "Tasso reale")
+    output_cell(ws, 11, 2, "='1 - Parametri'!B5", fmt="0.00%")
+    label_cell(ws, 12, 1, "Premio fedelta' (a scadenza)")
+    output_cell(ws, 12, 2, "='1 - Parametri'!B7", fmt="0.00%")
+    label_cell(ws, 13, 1, "Durata (anni)")
+    output_cell(ws, 13, 2, "='1 - Parametri'!B6", fmt="0")
+    label_cell(ws, 14, 1, "Rendimento reale annuo (comprato a 100)")
+    output_cell(ws, 14, 2, "=B11+B12/B13", fmt="0.00%")
+
+    section_header(ws, 16, "Confronto: rendimento reale annuo DA OGGI", span=SPAN)
+    label_cell(ws, 17, 1, "Vecchio, tenuto a scadenza (sul prezzo attuale)")
+    output_cell(ws, 17, 2, "=(B7*100+(100-B6)/B8)/B6", fmt="0.00%")
+    label_cell(ws, 18, 1, "Nuovo Si (comprato a 100)")
+    output_cell(ws, 18, 2, "=B14", fmt="0.00%")
+    label_cell(ws, 19, 1, "Differenza annua (Si - vecchio)")
+    output_cell(ws, 19, 2, "=B18-B17", fmt="+0.00%;-0.00%;0.00%")
+    label_cell(ws, 20, 1, "Vantaggio stimato dello switch (su 5 anni)")
+    output_cell(ws, 20, 2, "=B19*B13*(B5*B6/100)", fmt='#,##0" EUR"')
+
+    section_header(ws, 22, "Verdetto", span=SPAN)
+    label_cell(ws, 23, 1, "Conviene lo switch?")
+    output_cell(ws, 23, 2, '=IF(B18>B17,"SI - valuta lo switch","NO - tieni il vecchio")', fmt="@")
+    label_cell(ws, 24, 1, "Prezzo di indifferenza del vecchio")
+    output_cell(ws, 24, 2, "=(B7*100+100/B8)/(B18+1/B8)", fmt="0.00")
+
+    note_cell(ws, 26, 1,
+              "Logica: confronta il rendimento reale annuo che otterresti DA OGGI tenendo il vecchio "
+              "(penalizzato se quota sopra 100, perche' a scadenza torna a 100) contro il Si comprato a 100. "
+              "Se il vecchio quota SOPRA il prezzo di indifferenza, lo switch inizia ad avere senso.", span=SPAN)
+    note_cell(ws, 29, 1,
+              "Attenzione: vendendo il vecchio perdi il rateo/rivalutazione gia' maturati e il suo premio fedelta'; "
+              "paghi spread ed esecuzione. Per piccoli importi il vantaggio e' spesso di pochi euro. "
+              "Stima semplificata (rendimento 'semplice', cedole non reinvestite). NON e' consulenza finanziaria.", span=SPAN)
+
+    # --- Grafico break-even: rendimento reale del vecchio (al variare del prezzo) vs il Si (costante).
+    #     Le due linee si incrociano al prezzo di indifferenza (cella B24). ---
+    section_header(ws, 32, "Dati grafico break-even (prezzo del vecchio -> rendimento reale)", span=SPAN)
+    table_header(ws, 33, 1, "Prezzo vecchio")
+    table_header(ws, 33, 2, "Vecchio (rend. reale)")
+    table_header(ws, 33, 3, "Nuovo Si (rend. reale)")
+    prices = [98, 99, 100, 101, 102, 103, 104, 105]
+    for k, p in enumerate(prices):
+        r = 34 + k
+        input_cell(ws, r, 1, p, fmt="0")
+        output_cell(ws, r, 2, f"=(B$7*100+(100-A{r})/B$8)/A{r}", fmt="0.00%")
+        output_cell(ws, r, 3, "=B$14", fmt="0.00%")
+    last = 34 + len(prices) - 1
+    x_ref     = Reference(ws, min_col=1, min_row=34, max_col=1, max_row=last)  # A34:A41 prezzi
+    y_old_ref = Reference(ws, min_col=2, min_row=34, max_col=2, max_row=last)  # B34:B41 vecchio
+    y_si_ref  = Reference(ws, min_col=3, min_row=34, max_col=3, max_row=last)  # C34:C41 Si
+    cross_x_ref = Reference(ws, min_col=2, min_row=24, max_col=2, max_row=24)  # B24 prezzo indifferenza
+    cross_y_ref = Reference(ws, min_col=2, min_row=14, max_col=2, max_row=14)  # B14 rendimento Si
+    add_breakeven_chart(ws, "E4", x_ref, y_old_ref, y_si_ref, cross_x_ref, cross_y_ref)
+    return ws
+
+
 def main(out_path: str | None = None):
     wb = Workbook()
 
@@ -1286,6 +1497,7 @@ def main(out_path: str | None = None):
         ("9 - 4 profili FIRE",    "Allocazione consigliata"),
         ("10 - Calcolatore",      "Tuo profilo personale - raccomandazione automatica"),
         ("11 - Flusso cedolare",  "Calendario semestrale: quanto incassi e quando, cedola per cedola"),
+        ("12 - Switch",           "Conviene vendere un vecchio BTP Italia per il nuovo Si? Prezzo di indifferenza + verdetto"),
     ]
     # Fonti con numeri parametrici = FORMULE (bullet incluso nel testo della formula);
     # build_cover le scrive as-is, le stringhe semplici ricevono il bullet "• ".
@@ -1315,6 +1527,7 @@ def main(out_path: str | None = None):
     build_profili(wb)
     build_calcolatore(wb)
     build_flusso_cedolare(wb)
+    build_switch(wb)
 
     # Output: di default nel repo STAGING private (pattern release_excel.py:
     # staging -> public solo al go-live via tools/release_excel.py --slug btp_si_compare).
@@ -1329,6 +1542,8 @@ def main(out_path: str | None = None):
         out = staging_root / "simulatori" / "btp_si_compare_2026.xlsx"
     out.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out)
+    # Post-save: label di testo col valore del prezzo di indifferenza (foglio 12)
+    inject_indiff_label(out)
     print(f"[OK] {out}  ({out.stat().st_size / 1024:.1f} KB)")
 
 

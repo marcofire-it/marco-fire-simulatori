@@ -12,7 +12,7 @@ Questi strumenti hanno **finalità informative e divulgative**. Non sostituiscon
 
 | Video di riferimento | File | Sheets |
 |---|---|---|
-| BTP Italia Sì: confronto coi titoli di stato | [simulatori/btp_si_compare_2026.xlsx](simulatori/btp_si_compare_2026.xlsx) | 11 (parametri, Sì, classico, Valore, Futura, nominali, matrice, break-even, profili, calcolatore) |
+| BTP Italia Sì: confronto coi titoli di stato | [simulatori/btp_si_compare_2026.xlsx](simulatori/btp_si_compare_2026.xlsx) | 12 (parametri, Sì, classico, Valore, Futura, nominali, matrice, break-even, profili, calcolatore, flusso cedolare, Switch sì/no dai vecchi BTP Italia) |
 | Pensione 2056: i 4 profili | [simulatori/pensione_2056_2026.xlsx](simulatori/pensione_2056_2026.xlsx) | 3 (pensione INPS, tasso di sostituzione, mix INPS+FP) |
 | Fondo Pensione: guida pratica 2026 | [simulatori/fp_simulators_2026.xlsx](simulatori/fp_simulators_2026.xlsx) | 4 (montante, fiscale, TFR, anticipazioni) |
 | Fondo Pensione vs PAC | [simulatori/fp_vs_pac_2026.xlsx](simulatori/fp_vs_pac_2026.xlsx) | 3 (stesso contributo, risparmio fiscale, anni per il pareggio) |
