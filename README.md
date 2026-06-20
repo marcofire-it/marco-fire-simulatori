@@ -12,7 +12,14 @@ Questi strumenti hanno **finalità informative e divulgative**. Non sostituiscon
 
 | Video di riferimento | File | Sheets |
 |---|---|---|
+| BTP Italia Sì: confronto coi titoli di stato | [simulatori/btp_si_compare_2026.xlsx](simulatori/btp_si_compare_2026.xlsx) | 11 (parametri, Sì, classico, Valore, Futura, nominali, matrice, break-even, profili, calcolatore) |
+| Pensione 2056: i 4 profili | [simulatori/pensione_2056_2026.xlsx](simulatori/pensione_2056_2026.xlsx) | 3 (pensione INPS, tasso di sostituzione, mix INPS+FP) |
 | Fondo Pensione: guida pratica 2026 | [simulatori/fp_simulators_2026.xlsx](simulatori/fp_simulators_2026.xlsx) | 4 (montante, fiscale, TFR, anticipazioni) |
+| Fondo Pensione vs PAC | [simulatori/fp_vs_pac_2026.xlsx](simulatori/fp_vs_pac_2026.xlsx) | 3 (stesso contributo, risparmio fiscale, anni per il pareggio) |
+| Dichiarazione redditi (titoli esteri) | [simulatori/dichiarazione_redditi_2026.xlsx](simulatori/dichiarazione_redditi_2026.xlsx) | 3 (quadro RW, quadro RT, credito d'imposta estero) |
+| Tassazione ETF | [simulatori/tassazione_etf_2026.xlsx](simulatori/tassazione_etf_2026.xlsx) | 3 (aliquota per categoria, ETF misto, compensazione minus) |
+| PAC: piano di accumulo | [simulatori/pac_2026.xlsx](simulatori/pac_2026.xlsx) | 4 (PAC mensile, step-up, vs lump sum, verso il FIRE) |
+| ISTAT e FIRE Italia 2026 | [simulatori/istat_fire_2026.xlsx](simulatori/istat_fire_2026.xlsx) | 4 (SWR Italia, numero FIRE, alternative anti-inflazione, stress test) |
 
 Altri simulatori in arrivo per: Lazy Portfolio, PIC vs PAC, Mutuo vs Investimento, Fondo Emergenza, 3 Pilastri Pensione.
 
